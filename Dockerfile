@@ -2,7 +2,9 @@ FROM ghcr.io/anomalyco/opencode:latest
 
 # Alpine (musl libc) lacks glibc symbols required by some native .so libraries
 # loaded at runtime via bun:ffi. gcompat provides a glibc compatibility shim.
-RUN apk add --no-cache gcompat
+# git is needed so the entrypoint can auto-initialise an empty repo for non-git
+# directories, which prevents opencode from collapsing the project root to "/".
+RUN apk add --no-cache gcompat git
 
 # gcompat must be preloaded so that dlopen'd libraries can resolve glibc
 # symbols like gnu_get_libc_version, getauxval, etc.
@@ -17,3 +19,8 @@ RUN addgroup -g 1000 -S opencode && \
 
 USER opencode
 WORKDIR /code
+
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]

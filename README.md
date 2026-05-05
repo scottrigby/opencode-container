@@ -23,7 +23,9 @@ dependencies from loading.
 
 The official image runs as root, giving full write access to the entire
 container filesystem. The file browser starts from the container root (`/`),
-exposing the full system instead of just your project.
+exposing the full system instead of just your project. This wrapper fixes both
+issues: a non-root user and `WORKDIR /code` so the file browser starts in your
+project.
 
 ### 3. Session and config management
 
@@ -42,9 +44,13 @@ This image and wrapper script:
    resolve the missing symbols
 2. Runs as a non-root user (`opencode`) for safety
 3. Sets `/code` as the working directory so the file browser starts there
-4. Isolates **both session data and config** per-project using a base64-encoded
-   `$PWD` hash
-5. Prevents duplicate containers for the same project automatically
+4. Auto-initialises an empty git repo for non-git directories so opencode treats
+   the project root as `/code` instead of collapsing it to `/`
+5. Isolates **both session data and config** per-project using a base64-encoded
+    `$PWD` hash
+5. Prevents duplicate containers for the same project automatically using the full
+   base64 project ID stored as a Podman label (avoids false positives from
+   truncated container names)
 
 ## Build
 
@@ -86,9 +92,11 @@ The wrapper automatically:
 - Mounts session data, config, and the current directory
 - **Auto-discovers a free port** for web mode (starts at 4096, increments if
   in use)
-- **Prevents duplicate containers** for the same project — if you try to run a
-  second instance from the same directory, it will print an error and the
-  `podman attach` command to reconnect
+- **Prevents duplicate containers** for the same project using the full base64
+  project ID as a Podman label — if you try to run a second instance from the
+  same directory, it will print an error. Because the container name is
+  auto-generated, use the label (not the name) to find or attach to running
+  containers
 - **Handles Ctrl+C gracefully** — stops the container via host shell trap
 
 ### Manual commands
@@ -104,6 +112,7 @@ CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/opencode/$PROJECT_ID"
 mkdir -p "$DATA_DIR" "$CONFIG_DIR"
 
 podman run -it --rm \
+  --label "opencode.project.id=${PROJECT_ID}" \
   -v "$DATA_DIR:/home/opencode/.local/share/opencode:Z" \
   -v "$CONFIG_DIR:/home/opencode/.config/opencode:Z" \
   -v "$PWD:/code:Z" \
@@ -121,12 +130,27 @@ mkdir -p "$DATA_DIR" "$CONFIG_DIR"
 
 podman run -i --rm \
   -p 4096:4096 \
+  --label "opencode.project.id=${PROJECT_ID}" \
   -v "$DATA_DIR:/home/opencode/.local/share/opencode:Z" \
   -v "$CONFIG_DIR:/home/opencode/.config/opencode:Z" \
   -v "$PWD:/code:Z" \
   -e OPENCODE_DISABLE_DEFAULT_PLUGINS=true \
   localhost/opencode-glibc web --hostname 0.0.0.0
 ```
+
+> **Tip:** The `--label "opencode.project.id=${PROJECT_ID}"` flag stores the full
+> project hash on the container. Because names are auto-generated, always use the
+> label to find or interact with running containers:
+> ```bash
+> # Find the container name for this project
+> podman ps --filter "label=opencode.project.id=${PROJECT_ID}" --format '{{.Names}}'
+>
+> # Attach to a running TUI session
+> podman attach $(podman ps --filter "label=opencode.project.id=${PROJECT_ID}" --format '{{.Names}}')
+>
+> # Stop a running web container
+> podman stop $(podman ps --filter "label=opencode.project.id=${PROJECT_ID}" --format '{{.Names}}')
+> ```
 
 ### Decode a project ID back to its path
 
@@ -179,12 +203,22 @@ issues when multiple team members run containers simultaneously. The only cached
 asset (`models.json`) is re-downloaded automatically on first run — a minor
 one-time cost per container.
 
+## Non-git directories
+
+opencode's server discovers the project root by searching for `.git`. If none is
+found, it defaults the project root to `/`, which causes sessions to be stored
+with `directory = "/"` and the web UI to navigate to `/Lw` instead of your
+actual project path.
+
+The container entrypoint automatically initialises an empty git repository in
+`/code` **only when** the directory is not already inside a git repo. This is
+harmless and fully reversible — delete `.git` on the host if you don't want
+it. If you already have a git repo (or are inside one), nothing is changed.
+
 ## File browser scope
 
-The web TUI file browser starts at `/code` but can still navigate to `/`.
-Since the container runs as a non-root user (UID 1000), system files are
-read-only and cannot be modified. The file browser does not have a built-in
-option to restrict navigation to a single directory.
+The web UI file browser starts at `/code`. Since the container runs as a non-root
+user (UID 1000), system files outside `/code` are read-only.
 
 ## Future: Dev Container variant
 

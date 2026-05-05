@@ -28,14 +28,15 @@ PROJECT_ID=$(echo -n "$PWD" | base64 | tr -d '\n' | tr '+/' '-_' | tr -d '=')
 DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/opencode/$PROJECT_ID"
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/opencode/$PROJECT_ID"
 CODE_DIR="$PWD"
-CONTAINER_NAME="opencode-${PROJECT_ID:0:16}"
+LABEL_KEY="opencode.project.id"
 
 mkdir -p "$DATA_DIR" "$CONFIG_DIR"
 
-# Prevent duplicate containers for the same project
-if podman ps --filter "name=^${CONTAINER_NAME}$" --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
-  echo "opencode is already running for this project: ${CONTAINER_NAME}"
-  echo "Attach with: podman attach ${CONTAINER_NAME}"
+# Prevent duplicate containers for the same project using the full label value
+RUNNING_NAME=$(podman ps --filter "label=${LABEL_KEY}=${PROJECT_ID}" --format '{{.Names}}' | head -n1)
+if [[ -n "$RUNNING_NAME" ]]; then
+  echo "opencode is already running for this project: ${RUNNING_NAME}"
+  echo "Attach with: podman attach ${RUNNING_NAME}"
   exit 1
 fi
 
@@ -48,9 +49,9 @@ for arg in "$@"; do
   fi
 done
 
-# Common podman args
+# Common podman args (no --name — let Podman auto-generate to avoid collisions)
 PODMAN_ARGS=(
-  --name "${CONTAINER_NAME}"
+  --label "${LABEL_KEY}=${PROJECT_ID}"
   -v "${DATA_DIR}:/home/opencode/.local/share/opencode:Z"
   -v "${CONFIG_DIR}:/home/opencode/.config/opencode:Z"
   -v "${CODE_DIR}:/code:Z"
@@ -58,10 +59,6 @@ PODMAN_ARGS=(
 )
 
 if [[ "$IS_WEB" == true ]]; then
-  # TODO: sessions created with old container path (/) show as Lw in UI.
-  # New sessions use L2NvZGU (/code). Need to either migrate old sessions
-  # or update UI to show project path. For now, user must navigate manually.
-
   # Start container in background; set EXIT trap BEFORE podman run so
   # cleanup fires on Ctrl+C, error, or normal exit
   podman run -i --rm --init \
@@ -71,11 +68,27 @@ if [[ "$IS_WEB" == true ]]; then
     "$@" --hostname 0.0.0.0 --port "${PORT}" &
   CONTAINER_PID=$!
 
+  # Wait briefly for Podman to register the container, then look up its name
+  CONTAINER_NAME=""
+  for _ in {1..20}; do
+    CONTAINER_NAME=$(podman ps --filter "label=${LABEL_KEY}=${PROJECT_ID}" --format '{{.Names}}' | head -n1)
+    [[ -n "$CONTAINER_NAME" ]] && break
+    sleep 0.1
+  done
+  if [[ -n "$CONTAINER_NAME" ]]; then
+    echo "opencode web container: ${CONTAINER_NAME}"
+    echo "URL: http://localhost:${PORT}"
+  fi
+
   cleanup() {
     trap - EXIT INT TERM
     echo ""
     echo "Stopping opencode container..."
-    podman stop -t 5 "${CONTAINER_NAME}" >/dev/null 2>&1 || true
+    local name
+    name=$(podman ps --filter "label=${LABEL_KEY}=${PROJECT_ID}" --format '{{.Names}}' | head -n1)
+    if [[ -n "$name" ]]; then
+      podman stop -t 5 "$name" >/dev/null 2>&1 || true
+    fi
     wait $CONTAINER_PID 2>/dev/null || true
   }
   trap cleanup EXIT INT TERM
