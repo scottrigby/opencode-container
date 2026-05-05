@@ -1,0 +1,68 @@
+#!/bin/bash
+set -euo pipefail
+
+IMAGE="localhost/opencode-glibc"
+REQUESTED_PORT="${OPENCODE_PORT:-4096}"
+
+# Find next free port (macOS: lsof, Linux: ss)
+find_free_port() {
+    local port="$1"
+    if command -v lsof >/dev/null 2>&1; then
+        while lsof -Pi :${port} -sTCP:LISTEN -t >/dev/null 2>&1; do
+            port=$((port + 1))
+        done
+    elif command -v ss >/dev/null 2>&1; then
+        while ss -tln 2>/dev/null | grep -q "LISTEN.*:${port} "; do
+            port=$((port + 1))
+        done
+    fi
+    echo "$port"
+}
+
+PORT=$(find_free_port "$REQUESTED_PORT")
+if [[ "$PORT" != "$REQUESTED_PORT" ]]; then
+    echo "Port ${REQUESTED_PORT} in use, using port ${PORT} instead" >&2
+fi
+
+PROJECT_ID=$(echo -n "$PWD" | base64 | tr -d '\n' | tr '+/' '-_' | tr -d '=')
+DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/opencode/$PROJECT_ID"
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/opencode/$PROJECT_ID"
+CODE_DIR="$PWD"
+CONTAINER_NAME="opencode-${PROJECT_ID:0:16}"
+
+mkdir -p "$DATA_DIR" "$CONFIG_DIR"
+
+# Prevent duplicate containers for the same project
+if podman ps --filter "name=^${CONTAINER_NAME}$" --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
+  echo "opencode is already running for this project: ${CONTAINER_NAME}"
+  echo "Attach with: podman attach ${CONTAINER_NAME}"
+  exit 1
+fi
+
+# Detect web mode
+IS_WEB=false
+for arg in "$@"; do
+  if [[ "$arg" == "web" ]]; then
+    IS_WEB=true
+    break
+  fi
+done
+
+if [[ "$IS_WEB" == true ]]; then
+  exec podman run -it --rm \
+    --name "${CONTAINER_NAME}" \
+    -p "${PORT}:${PORT}" \
+    -v "${DATA_DIR}:/home/opencode/.local/share/opencode:Z" \
+    -v "${CONFIG_DIR}:/home/opencode/.config/opencode:Z" \
+    -v "${CODE_DIR}:/code:Z" \
+    -e OPENCODE_DISABLE_DEFAULT_PLUGINS=true \
+    "${IMAGE}" "$@" --hostname 0.0.0.0 --port "${PORT}"
+else
+  exec podman run -it --rm \
+    --name "${CONTAINER_NAME}" \
+    -v "${DATA_DIR}:/home/opencode/.local/share/opencode:Z" \
+    -v "${CONFIG_DIR}:/home/opencode/.config/opencode:Z" \
+    -v "${CODE_DIR}:/code:Z" \
+    -e OPENCODE_DISABLE_DEFAULT_PLUGINS=true \
+    "${IMAGE}" "$@"
+fi

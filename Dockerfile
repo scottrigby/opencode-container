@@ -1,0 +1,19 @@
+FROM ghcr.io/anomalyco/opencode:latest
+
+# Alpine (musl libc) lacks glibc symbols required by some native .so libraries
+# loaded at runtime via bun:ffi. gcompat provides a glibc compatibility shim.
+RUN apk add --no-cache gcompat
+
+# gcompat must be preloaded so that dlopen'd libraries can resolve glibc
+# symbols like gnu_get_libc_version, getauxval, etc.
+ENV LD_PRELOAD=/lib/libgcompat.so.0
+
+# Create non-root user and set up workspace + XDG directories
+RUN addgroup -g 1000 -S opencode && \
+    adduser -u 1000 -S -G opencode -s /bin/sh -h /home/opencode opencode && \
+    mkdir -p /code && \
+    mkdir -p /home/opencode/.local/share /home/opencode/.local/state /home/opencode/.cache && \
+    chown -R opencode:opencode /code /home/opencode/.local /home/opencode/.cache
+
+USER opencode
+WORKDIR /code
