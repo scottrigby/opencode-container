@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 # Design Rationale
 
 This document captures the reasoning behind key decisions in `opencode-container`.

@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 # opencode-container
 
 Run the opencode CLI in a Podman container with glibc compatibility, non-root

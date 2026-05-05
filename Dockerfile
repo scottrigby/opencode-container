@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 FROM ghcr.io/anomalyco/opencode:latest
 
 # Alpine (musl libc) lacks glibc symbols required by some native .so libraries
