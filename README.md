@@ -215,6 +215,20 @@ The container entrypoint automatically initialises an empty git repository in
 harmless and fully reversible — delete `.git` on the host if you don't want
 it. If you already have a git repo (or are inside one), nothing is changed.
 
+## Git workspaces
+
+If you run the wrapper from anywhere inside a git repository, it automatically
+mounts the **repo root** as `/code` (not just the current subdirectory). This
+matches how native opencode works — project boundaries are git roots, and the
+file browser shows the entire repo.
+
+If you explicitly want to scope the container to the current subdirectory only
+(e.g. in a large monorepo), set:
+
+```bash
+OPENCODE_NO_GIT_ROOT=1 ./opencode-container web
+```
+
 ## File browser scope
 
 The web UI file browser starts at `/code`. Since the container runs as a non-root

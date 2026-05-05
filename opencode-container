@@ -24,11 +24,31 @@ if [[ "$PORT" != "$REQUESTED_PORT" ]]; then
     echo "Port ${REQUESTED_PORT} in use, using port ${PORT} instead" >&2
 fi
 
-PROJECT_ID=$(echo -n "$PWD" | base64 | tr -d '\n' | tr '+/' '-_' | tr -d '=')
+# Detect git root on the host. If we're inside a git repo, mount the repo root
+# as /code so the container can discover .git and correctly identify the project.
+# This matches how native opencode works — project boundaries are git roots.
+# If git is not available or we're not in a repo, fall back to $PWD.
+if [[ -z "${OPENCODE_NO_GIT_ROOT:-}" ]] && command -v git >/dev/null 2>&1; then
+  GIT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || true)
+  if [[ -n "${GIT_ROOT:-}" ]]; then
+    CODE_DIR="$GIT_ROOT"
+    PROJECT_ID=$(echo -n "$GIT_ROOT" | base64 | tr -d '\n' | tr '+/' '-_' | tr -d '=')
+  else
+    CODE_DIR="$PWD"
+    PROJECT_ID=$(echo -n "$PWD" | base64 | tr -d '\n' | tr '+/' '-_' | tr -d '=')
+  fi
+else
+  CODE_DIR="$PWD"
+  PROJECT_ID=$(echo -n "$PWD" | base64 | tr -d '\n' | tr '+/' '-_' | tr -d '=')
+fi
+
 DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/opencode/$PROJECT_ID"
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/opencode/$PROJECT_ID"
-CODE_DIR="$PWD"
 LABEL_KEY="opencode.project.id"
+
+if [[ -n "${GIT_ROOT:-}" ]] && [[ "$GIT_ROOT" != "$PWD" ]]; then
+  echo "Git repo detected; mounting root: $GIT_ROOT" >&2
+fi
 
 mkdir -p "$DATA_DIR" "$CONFIG_DIR"
 
