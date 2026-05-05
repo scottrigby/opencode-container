@@ -48,21 +48,44 @@ for arg in "$@"; do
   fi
 done
 
+# Common podman args
+PODMAN_ARGS=(
+  --name "${CONTAINER_NAME}"
+  -v "${DATA_DIR}:/home/opencode/.local/share/opencode:Z"
+  -v "${CONFIG_DIR}:/home/opencode/.config/opencode:Z"
+  -v "${CODE_DIR}:/code:Z"
+  -e OPENCODE_DISABLE_DEFAULT_PLUGINS=true
+)
+
 if [[ "$IS_WEB" == true ]]; then
-  exec podman run -it --rm \
-    --name "${CONTAINER_NAME}" \
+  # TODO: sessions created with old container path (/) show as Lw in UI.
+  # New sessions use L2NvZGU (/code). Need to either migrate old sessions
+  # or update UI to show project path. For now, user must navigate manually.
+
+  # Start container in background; set EXIT trap BEFORE podman run so
+  # cleanup fires on Ctrl+C, error, or normal exit
+  podman run -i --rm --init \
+    "${PODMAN_ARGS[@]}" \
     -p "${PORT}:${PORT}" \
-    -v "${DATA_DIR}:/home/opencode/.local/share/opencode:Z" \
-    -v "${CONFIG_DIR}:/home/opencode/.config/opencode:Z" \
-    -v "${CODE_DIR}:/code:Z" \
-    -e OPENCODE_DISABLE_DEFAULT_PLUGINS=true \
-    "${IMAGE}" "$@" --hostname 0.0.0.0 --port "${PORT}"
+    "${IMAGE}" \
+    "$@" --hostname 0.0.0.0 --port "${PORT}" &
+  CONTAINER_PID=$!
+
+  cleanup() {
+    trap - EXIT INT TERM
+    echo ""
+    echo "Stopping opencode container..."
+    podman stop -t 5 "${CONTAINER_NAME}" >/dev/null 2>&1 || true
+    wait $CONTAINER_PID 2>/dev/null || true
+  }
+  trap cleanup EXIT INT TERM
+
+  # Wait for container; || true prevents set -e from skipping cleanup
+  wait $CONTAINER_PID || true
 else
-  exec podman run -it --rm \
-    --name "${CONTAINER_NAME}" \
-    -v "${DATA_DIR}:/home/opencode/.local/share/opencode:Z" \
-    -v "${CONFIG_DIR}:/home/opencode/.config/opencode:Z" \
-    -v "${CODE_DIR}:/code:Z" \
-    -e OPENCODE_DISABLE_DEFAULT_PLUGINS=true \
-    "${IMAGE}" "$@"
+  # TUI mode: needs -t for interactive terminal
+  podman run -it --rm \
+    "${PODMAN_ARGS[@]}" \
+    "${IMAGE}" \
+    "$@"
 fi

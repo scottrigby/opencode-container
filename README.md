@@ -89,6 +89,7 @@ The wrapper automatically:
 - **Prevents duplicate containers** for the same project — if you try to run a
   second instance from the same directory, it will print an error and the
   `podman attach` command to reconnect
+- **Handles Ctrl+C gracefully** — stops the container via host shell trap
 
 ### Manual commands
 
@@ -118,7 +119,7 @@ DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/opencode/$PROJECT_ID"
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/opencode/$PROJECT_ID"
 mkdir -p "$DATA_DIR" "$CONFIG_DIR"
 
-podman run -it --rm \
+podman run -i --rm \
   -p 4096:4096 \
   -v "$DATA_DIR:/home/opencode/.local/share/opencode:Z" \
   -v "$CONFIG_DIR:/home/opencode/.config/opencode:Z" \
