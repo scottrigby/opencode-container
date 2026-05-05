@@ -38,8 +38,9 @@ alias oc='opencode-container'   # add to shell profile
 3. **Mounts your project** at `/code` — if you're inside a git repo, it
    automatically uses the repo root so the file browser and session scoping
    work correctly.
-4. **Isolates data per project** under hashed paths in
-   `~/.local/share/opencode/` and `~/.config/opencode/`.
+4. **Isolates data per project** under hashed paths, respecting the
+   [XDG Base Directory Specification](https://specifications.freedesktop.org/basedir/latest)
+   (`$XDG_DATA_HOME/opencode/` and `$XDG_CONFIG_HOME/opencode/`).
 5. **Auto-discovers a free port** starting at `4096`.
 6. **Prevents duplicate containers** for the same project using Podman labels.
 7. **Handles Ctrl+C gracefully** in web mode.
