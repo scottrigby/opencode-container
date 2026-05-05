@@ -6,15 +6,15 @@ user, and per-project session isolation.
 ## Quick start
 
 ```bash
-# Build the image
-podman build -t localhost/opencode-glibc .
-
-# TUI mode
+# TUI mode — image builds automatically on first run
 ./opencode-container
 
 # Web mode
 ./opencode-container web
 # open http://localhost:PORT
+
+# Force rebuild to pull latest upstream image
+./opencode-container --build web
 ```
 
 For convenience:
@@ -33,7 +33,7 @@ alias oc='opencode-container'   # add to shell profile
 ## What it does
 
 1. **Builds a glibc-compatible image** by layering `gcompat` onto the upstream
-   Alpine-based opencode image.
+   Alpine-based opencode image. The build happens automatically on first run.
 2. **Runs as non-root** (`opencode` user, UID 1000) for safety.
 3. **Mounts your project** at `/code` — if you're inside a git repo, it
    automatically uses the repo root so the file browser and session scoping
@@ -46,8 +46,9 @@ alias oc='opencode-container'   # add to shell profile
 
 ## Options
 
-| Variable | Description |
-|----------|-------------|
+| Flag / Variable | Description |
+|-----------------|-------------|
+| `--build` | Force rebuild the container image (also pulls latest upstream) |
 | `OPENCODE_PORT` | Override the default port (`4096`) |
 | `OPENCODE_NO_GIT_ROOT=1` | Force mounting the current subdirectory instead of the git repo root |
 
@@ -61,6 +62,9 @@ DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/opencode/$PROJECT_ID"
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/opencode/$PROJECT_ID"
 mkdir -p "$DATA_DIR" "$CONFIG_DIR"
 
+# Build image (only needed once, or to update)
+podman build -t localhost/opencode-container /path/to/opencode-container
+
 # TUI
 podman run -it --rm \
   --label "opencode.project.id=${PROJECT_ID}" \
@@ -68,7 +72,7 @@ podman run -it --rm \
   -v "$CONFIG_DIR:/home/opencode/.config/opencode:Z" \
   -v "$PWD:/code:Z" \
   -e OPENCODE_DISABLE_DEFAULT_PLUGINS=true \
-  localhost/opencode-glibc
+  localhost/opencode-container
 
 # Web
 podman run -i --rm --init \
@@ -78,7 +82,7 @@ podman run -i --rm --init \
   -v "$CONFIG_DIR:/home/opencode/.config/opencode:Z" \
   -v "$PWD:/code:Z" \
   -e OPENCODE_DISABLE_DEFAULT_PLUGINS=true \
-  localhost/opencode-glibc web --hostname 0.0.0.0
+  localhost/opencode-container web --hostname 0.0.0.0
 ```
 
 ### Find or stop a running container by project
@@ -135,7 +139,7 @@ cp ~/.config/opencode/<hash-a>/auth.json ~/.config/opencode/<hash-b>/
 
 ## Design & rationale
 
-For detailed reasoning behind every decision (Alpine vs Debian, label
+For detailed reasoning behind every decision (Alpine+gcompat, label
 deduplication, git root detection, port scanning, Ctrl+C handling, etc.), see
 [`DESIGN.md`](DESIGN.md).
 

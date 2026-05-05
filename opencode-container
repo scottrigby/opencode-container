@@ -1,8 +1,44 @@
 #!/bin/bash
 set -euo pipefail
 
-IMAGE="localhost/opencode-glibc"
+IMAGE="localhost/opencode-container"
 REQUESTED_PORT="${OPENCODE_PORT:-4096}"
+FORCE_BUILD=false
+
+# Strip --build from args before passing them to opencode
+REST_ARGS=()
+for arg in "$@"; do
+  if [[ "$arg" == "--build" ]]; then
+    FORCE_BUILD=true
+  else
+    REST_ARGS+=("$arg")
+  fi
+done
+set -- "${REST_ARGS[@]}"
+
+# Resolve script directory, even if installed via symlink.
+# Works on macOS (no readlink -f) and Linux.
+SCRIPT_PATH="$0"
+while [[ -L "$SCRIPT_PATH" ]]; do
+  LINK_TARGET=$(readlink "$SCRIPT_PATH")
+  if [[ "$LINK_TARGET" == /* ]]; then
+    SCRIPT_PATH="$LINK_TARGET"
+  else
+    SCRIPT_PATH="$(dirname "$SCRIPT_PATH")/$LINK_TARGET"
+  fi
+done
+SCRIPT_DIR=$(cd "$(dirname "$SCRIPT_PATH")" && pwd)
+
+# Auto-build the image on first run, or when --build is passed.
+if [[ "$FORCE_BUILD" == true ]] || ! podman image exists "$IMAGE" >/dev/null 2>&1; then
+  if [[ ! -f "$SCRIPT_DIR/Dockerfile" ]]; then
+    echo "Image $IMAGE not found and no Dockerfile in $SCRIPT_DIR" >&2
+    echo "Please run: podman build -t $IMAGE /path/to/opencode-container" >&2
+    exit 1
+  fi
+  echo "Building $IMAGE ..." >&2
+  podman build -t "$IMAGE" "$SCRIPT_DIR" >&2
+fi
 
 # Find next free port (macOS: lsof, Linux: ss)
 find_free_port() {

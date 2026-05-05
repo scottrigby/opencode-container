@@ -38,10 +38,11 @@ of a Debian variant.
 
 ---
 
-## 3. `localhost/opencode-glibc` image name
+## 3. `localhost/opencode-container` image name
 
-Podman prepends `localhost/` to locally-built images. We use this exact name in
-the wrapper script so users don't need registry credentials or tag management.
+The image name matches the script name (`opencode-container`) so they form a
+self-describing pair. Podman prepends `localhost/` to locally-built images
+automatically. No registry credentials or tag management are needed.
 
 ---
 
