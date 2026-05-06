@@ -47,6 +47,10 @@ if [[ "${1:-}" == "projects" ]]; then
       echo "[unreadable]  $basename" >&2
       continue
     fi
+    # Resolve symlinks for consistent display (macOS: /var → /private/var)
+    if [[ -d "$decoded" ]]; then
+      decoded="$(cd "$decoded" && pwd -P)"
+    fi
     echo "$decoded"
   done
   exit 0
@@ -108,30 +112,37 @@ if [[ "$IS_WEB" == true ]]; then
   fi
 fi
 
+# Resolve symlinks in a path (macOS: /var → /private/var, etc.).
+# Uses cd + pwd -P for portability (works on macOS and Linux).
+resolve_path() {
+  (cd "$1" && pwd -P) 2>/dev/null || printf '%s\n' "$1"
+}
+
 # Detect git root on the host. If we're inside a git repo, mount the repo root
 # as /code so the container can discover .git and correctly identify the project.
 # This matches how native opencode works — project boundaries are git roots.
 # If git is not available or we're not in a repo, fall back to $PWD.
+PWD_RESOLVED=$(resolve_path "$PWD")
 if [[ -z "${OPENCODE_NO_GIT_ROOT:-}" ]] && command -v git >/dev/null 2>&1; then
   GIT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || true)
   if [[ -n "${GIT_ROOT:-}" ]]; then
-    CODE_DIR="$GIT_ROOT"
-    PROJECT_ID=$(echo -n "$GIT_ROOT" | base64 | tr -d '\n' | tr '+/' '-_' | tr -d '=')
+    CODE_DIR=$(resolve_path "$GIT_ROOT")
+    PROJECT_ID=$(echo -n "$CODE_DIR" | base64 | tr -d '\n' | tr '+/' '-_' | tr -d '=')
   else
-    CODE_DIR="$PWD"
-    PROJECT_ID=$(echo -n "$PWD" | base64 | tr -d '\n' | tr '+/' '-_' | tr -d '=')
+    CODE_DIR="$PWD_RESOLVED"
+    PROJECT_ID=$(echo -n "$PWD_RESOLVED" | base64 | tr -d '\n' | tr '+/' '-_' | tr -d '=')
   fi
 else
-  CODE_DIR="$PWD"
-  PROJECT_ID=$(echo -n "$PWD" | base64 | tr -d '\n' | tr '+/' '-_' | tr -d '=')
+  CODE_DIR="$PWD_RESOLVED"
+  PROJECT_ID=$(echo -n "$PWD_RESOLVED" | base64 | tr -d '\n' | tr '+/' '-_' | tr -d '=')
 fi
 
 DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/opencode/$PROJECT_ID"
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/opencode/$PROJECT_ID"
 LABEL_KEY="opencode.project.id"
 
-if [[ -n "${GIT_ROOT:-}" ]] && [[ "$GIT_ROOT" != "$PWD" ]]; then
-  echo "Git repo detected; mounting root: $GIT_ROOT" >&2
+if [[ -n "${GIT_ROOT:-}" ]] && [[ "$CODE_DIR" != "$PWD_RESOLVED" ]]; then
+  echo "Git repo detected; mounting root: $CODE_DIR" >&2
 fi
 
 mkdir -p "$DATA_DIR" "$CONFIG_DIR"
