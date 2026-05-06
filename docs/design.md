@@ -23,9 +23,10 @@ Podman is used because:
 
 ## 2. Alpine + `gcompat` instead of Debian
 
-The upstream image is Alpine-based (`ghcr.io/anomalyco/opencode:latest`). Rather
-than maintaining a forked Debian image, we layer on `gcompat` to resolve glibc
-symbol errors at runtime:
+The [upstream image](https://github.com/anomalyco/opencode/blob/dev/packages/opencode/Dockerfile)
+is Alpine-based (`ghcr.io/anomalyco/opencode:latest`). Rather than maintaining a
+forked Debian image, we layer on `gcompat` to resolve glibc symbol errors at
+runtime:
 
 ```
 Error relocating ...so: gnu_get_libc_version: symbol not found

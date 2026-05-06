@@ -4,6 +4,8 @@
 If you prefer not to use the `bin/opencode-container` wrapper, run Podman
 commands directly.
 
+For the wrapper's usage, subcommands, and options, see [`docs/commands.md`](commands.md).
+
 ## One-time setup
 
 Compute your project ID and create data directories:

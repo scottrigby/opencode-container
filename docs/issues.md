@@ -4,12 +4,6 @@
 Issues discovered while building the container wrapper. Some have local patches;
 see [`patches/readme.md`](../patches/readme.md) for how to apply them upstream.
 
-## Upstream links
-
-- [Official Dockerfile](https://github.com/anomalyco/opencode/blob/dev/packages/opencode/Dockerfile)
-- [Alpine/musl issue](https://github.com/anomalyco/opencode/issues/9246)
-- [Debian variant PR](https://github.com/anomalyco/opencode/pull/9560)
-
 ---
 
 ## glibc / musl on Alpine

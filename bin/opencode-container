@@ -17,6 +17,41 @@ for arg in "$@"; do
 done
 set -- "${REST_ARGS[@]:-}"
 
+if [[ "${1:-}" == "--help" ]] || [[ "${1:-}" == "-h" ]]; then
+  cat <<'EOF'
+NAME
+    opencode-container — run opencode in a Podman container with per-project isolation
+
+SYNOPSIS
+    opencode-container [--build] [subcommand]
+
+COMMANDS
+    tui          Terminal UI mode (default when no subcommand is given)
+    web          Web UI mode — auto-discovers a free port starting at 4096
+    projects     List all projects with isolated session data
+
+OPTIONS
+    --build      Force rebuild the container image before running
+    --help, -h   Print this help and exit
+
+ENVIRONMENT
+    OPENCODE_PORT          Override the default web port (4096)
+    OPENCODE_NO_GIT_ROOT=1  Mount current dir instead of git repo root
+    XDG_DATA_HOME          Base dir for session data (default: ~/.local/share)
+    XDG_CONFIG_HOME        Base dir for project config (default: ~/.config)
+
+EXAMPLES
+    opencode-container                  # TUI mode
+    opencode-container web              # Web mode
+    OPENCODE_PORT=5000 opencode-container web
+    opencode-container --build web      # Rebuild image, then web mode
+    opencode-container projects         # List isolated projects
+
+See docs/commands.md for full documentation.
+EOF
+  exit 0
+fi
+
 # --- Subcommands that don't start a container ---
 
 if [[ "${1:-}" == "projects" ]]; then
