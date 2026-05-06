@@ -171,8 +171,17 @@ if [[ "$IS_WEB" == true ]]; then
     sleep 0.1
   done
   if [[ -n "$CONTAINER_NAME" ]]; then
+    CODE_B64=$(printf '%s' '/code' | base64 | tr -d '\n' | tr '+/' '-_' | tr -d '=')
+    URL="http://localhost:${PORT}/${CODE_B64}"
     echo "opencode web container: ${CONTAINER_NAME}"
-    echo "URL: http://localhost:${PORT}"
+    echo "URL: ${URL}"
+
+    # Auto-open browser (macOS: open, Linux: xdg-open)
+    if command -v open >/dev/null 2>&1; then
+      open "$URL"
+    elif command -v xdg-open >/dev/null 2>&1; then
+      xdg-open "$URL"
+    fi
   fi
 
   cleanup() {
