@@ -68,11 +68,11 @@ binary name itself is explicit.
 ## 6. Per-project data/config isolation (not shared)
 
 Each project directory gets its own `opencode.db`, `auth.json`, `node_modules`,
-etc. under hashed paths:
+etc. under base64-encoded paths:
 
 ```
-~/.local/share/opencode/<hash>/
-~/.config/opencode/<hash>/
+~/.local/share/opencode/<encoding>/
+~/.config/opencode/<encoding>/
 ```
 
 This is **intentionally not shared** across projects to prevent:
@@ -146,17 +146,13 @@ monorepos where you only want to work on one package).
 
 ## 11. Upstream source patches
 
-Two patches are included in the [`patches/`](./patches) directory as a reminder
+Two patches are included in the [`patches/`](../patches) directory as a reminder
 to contribute them upstream. They are **not required** for daily use; the
 `entrypoint.sh` + host git detection handle the pre-built image.
 
-| Patch | File | What it fixes |
-|-------|------|---------------|
-| `0001-project-fromdirectory-use-directory-for-non-git-work.patch` | `packages/opencode/src/project/project.ts` | When no `.git` is found, use the actual `directory` instead of `"/"` as the worktree. Prevents collapsing all non-git directories into a single global project. |
-| `0002-tui-plugin-runtime-fix-vcs-inference-for-non-git-dirs.patch` | `packages/opencode/src/cli/cmd/tui/plugin/runtime.ts` | Infer `vcs` from actual sync state instead of `worktree !== "/"`. Prevents misreporting non-git directories as git. |
-
-If accepted upstream, the `entrypoint.sh` `git init` workaround for non-git
-directories could be removed.
+See [`patches/readme.md`](../patches/readme.md) for patch details and how to
+apply them. If accepted upstream, the `entrypoint.sh` `git init` workaround for
+non-git directories could be removed.
 
 ---
 
