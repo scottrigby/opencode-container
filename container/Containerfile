@@ -18,10 +18,11 @@ RUN addgroup -g 1000 -S opencode && \
     mkdir -p /home/opencode/.local/share /home/opencode/.local/state /home/opencode/.cache && \
     chown -R opencode:opencode /code /home/opencode/.local /home/opencode/.cache
 
-USER opencode
 WORKDIR /code
 
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
+
+USER opencode
 
 ENTRYPOINT ["/entrypoint.sh"]
