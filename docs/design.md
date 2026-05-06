@@ -3,6 +3,8 @@
 
 This document captures the reasoning behind key decisions in `opencode-container`.
 
+For a concise list of issues that led to these decisions, see [`docs/issues.md`](issues.md).
+
 ## Philosophy
 
 The wrapper should be invisible to daily use: run `opencode-container` from any
