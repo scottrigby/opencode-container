@@ -17,6 +17,41 @@ for arg in "$@"; do
 done
 set -- "${REST_ARGS[@]}"
 
+# --- Subcommands that don't start a container ---
+
+if [[ "${1:-}" == "projects" ]]; then
+  DATA_ROOT="${XDG_DATA_HOME:-$HOME/.local/share}/opencode"
+  if [[ ! -d "$DATA_ROOT" ]]; then
+    echo "No projects found in $DATA_ROOT" >&2
+    exit 0
+  fi
+
+  decode_base64url() {
+    local input="$1"
+    local len=${#input}
+    local mod=$((len % 4))
+    local padding=""
+    if [[ $mod -eq 2 ]]; then
+      padding="=="
+    elif [[ $mod -eq 3 ]]; then
+      padding="="
+    fi
+    printf '%s%s\n' "$input" "$padding" | tr '_-' '/+' | base64 --decode
+  }
+
+  for d in "$DATA_ROOT"/*; do
+    [[ -d "$d" ]] || continue
+    basename="$(basename "$d")"
+    decoded="$(decode_base64url "$basename" 2>/dev/null)"
+    if [[ -z "$decoded" ]]; then
+      echo "[unreadable]  $basename" >&2
+      continue
+    fi
+    echo "$decoded"
+  done
+  exit 0
+fi
+
 # Resolve script directory, even if installed via symlink.
 # Works on macOS (no readlink -f) and Linux.
 SCRIPT_PATH="$0"

@@ -16,6 +16,9 @@ user, and per-project session isolation.
 
 # Force rebuild to pull latest upstream image
 ./bin/opencode-container --build web
+
+# List all projects with isolated data
+./bin/opencode-container projects
 ```
 
 For convenience:
@@ -53,6 +56,12 @@ alias oc='opencode-container'   # add to shell profile
 | `--build` | Force rebuild the container image (also pulls latest upstream) |
 | `OPENCODE_PORT` | Override the default port (`4096`) |
 | `OPENCODE_NO_GIT_ROOT=1` | Force mounting the current subdirectory instead of the git repo root |
+
+## Subcommands
+
+| Subcommand | Description |
+|------------|-------------|
+| `projects` | List all project directories that have isolated data in `~/.local/share/opencode/` |
 
 ## Manual Podman commands
 
