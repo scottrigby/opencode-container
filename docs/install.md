@@ -43,7 +43,8 @@ cp ~/.config/opencode/<encoding-a>/auth.json ~/.config/opencode/<encoding-b>/
 - **Non-git directories:** If you run this in a directory without `.git`, the
   container auto-initialises an empty git repo at `/code` so opencode treats it
   as a proper project root. Remove `.git` on the host afterward if you don't
-  want it. See [`docs/issues.md`](issues.md#non-git-directories-collapse-into-a-single-global-project)
+  want it, or pass `--no-git-init` to skip the auto-initialisation entirely.
+  See [`docs/issues.md`](issues.md#non-git-directories-collapse-into-a-single-global-project)
   for the full upstream context.
 - **Alpine glibc:** Native `.so` libraries loaded at runtime need glibc symbols.
   The `gcompat` shim resolves this. See [`docs/issues.md`](issues.md#glibc--musl-on-alpine)

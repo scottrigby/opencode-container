@@ -8,8 +8,11 @@ cd /code
 # which breaks per-directory isolation in the web UI (sessions get directory="/",
 # sidebar navigates to Lw, etc.). Initialise an empty git repo only when /code
 # is not already inside one. This is harmless and reversible (rm -rf .git).
-if ! git rev-parse --git-dir >/dev/null 2>&1; then
-  git init >/dev/null 2>&1 || true
+# Skip if OPENCODE_NO_GIT_INIT is set (e.g. via --no-git-init flag).
+if [[ -z "${OPENCODE_NO_GIT_INIT:-}" ]]; then
+  if ! git rev-parse --git-dir >/dev/null 2>&1; then
+    git init >/dev/null 2>&1 || true
+  fi
 fi
 
 exec opencode "$@"

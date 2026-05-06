@@ -2,59 +2,209 @@
 # SPDX-License-Identifier: Apache-2.0
 set -euo pipefail
 
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
 IMAGE="localhost/opencode-container"
-REQUESTED_PORT="${OPENCODE_PORT:-4096}"
-FORCE_BUILD=false
+DEFAULT_PORT=4096
+LABEL_KEY="opencode.project.id"
 
-# Strip --build from args before passing them to opencode
-REST_ARGS=()
-for arg in "$@"; do
-  if [[ "$arg" == "--build" ]]; then
-    FORCE_BUILD=true
-  else
-    REST_ARGS+=("$arg")
-  fi
-done
-set -- "${REST_ARGS[@]:-}"
-
-if [[ "${1:-}" == "--help" ]] || [[ "${1:-}" == "-h" ]]; then
+# ---------------------------------------------------------------------------
+# Usage
+# ---------------------------------------------------------------------------
+usage() {
   cat <<'EOF'
 NAME
     opencode-container — run opencode in a Podman container with per-project isolation
 
 SYNOPSIS
-    opencode-container [--build] [subcommand]
+    opencode-container [global-options] [subcommand] [subcommand-options]
+
+DESCRIPTION
+    A wrapper around podman that runs the opencode CLI in an Alpine-based
+    container with glibc compatibility, non-root user (UID 1000), and
+    per-project data isolation. The container image builds automatically
+    on first run.
+
+GLOBAL OPTIONS
+    -b, --build          Force rebuild the container image before running
+    --no-git-root        Mount the current working directory instead of
+                         auto-detecting the git repository root
+    --no-git-init        Do not auto-initialise an empty git repo in
+                         non-git directories
+    -h, --help           Print this help and exit
 
 COMMANDS
-    tui          Terminal UI mode (default when no subcommand is given)
-    web          Web UI mode — auto-discovers a free port starting at 4096
-    projects     List all projects with isolated session data
+    tui                  Terminal UI mode (default when no subcommand is given)
+    web                  Web UI mode
+    projects             List all projects with isolated session data
 
-OPTIONS
-    --build      Force rebuild the container image before running
-    --help, -h   Print this help and exit
-
-ENVIRONMENT
-    OPENCODE_PORT          Override the default web port (4096)
-    OPENCODE_NO_GIT_ROOT=1  Mount current dir instead of git repo root
-    XDG_DATA_HOME          Base dir for session data (default: ~/.local/share)
-    XDG_CONFIG_HOME        Base dir for project config (default: ~/.config)
+COMMAND OPTIONS
+    web
+        -p, --port PORT    Port to listen on (default: 4096)
+        --no-open          Do not auto-open the browser
 
 EXAMPLES
-    opencode-container                  # TUI mode
-    opencode-container web              # Web mode
-    OPENCODE_PORT=5000 opencode-container web
-    opencode-container --build web      # Rebuild image, then web mode
-    opencode-container projects         # List isolated projects
+    opencode-container                      # TUI mode
+    opencode-container web                  # Web mode
+    opencode-container web --port 5000      # Web mode on port 5000
+    opencode-container -b web -p 5000       # Rebuild, then web on 5000
+    opencode-container --no-git-root        # TUI, mount current dir
+    opencode-container projects             # List isolated projects
 
 See docs/commands.md for full documentation.
 EOF
-  exit 0
+}
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+resolve_path() {
+  (cd "$1" && pwd -P) 2>/dev/null || printf '%s\n' "$1"
+}
+
+build_image() {
+  local container_dir="$1"
+  if [[ ! -f "$container_dir/Containerfile" ]]; then
+    echo "Image $IMAGE not found and no Containerfile in $container_dir" >&2
+    echo "Please run: podman build -t $IMAGE $container_dir" >&2
+    exit 1
+  fi
+  echo "Building $IMAGE ..." >&2
+  podman build -t "$IMAGE" "$container_dir" >&2
+}
+
+find_free_port() {
+  local port="$1"
+  if command -v lsof >/dev/null 2>&1; then
+    while lsof -Pi :${port} -sTCP:LISTEN -t >/dev/null 2>&1; do
+      port=$((port + 1))
+    done
+  elif command -v ss >/dev/null 2>&1; then
+    while ss -tln 2>/dev/null | grep -q "LISTEN.*:${port} "; do
+      port=$((port + 1))
+    done
+  fi
+  echo "$port"
+}
+
+# Returns 0 if the TCP port is accepting connections
+port_is_open() {
+  local host="$1" port="$2"
+  timeout 2 bash -c "exec 3<>/dev/tcp/${host}/${port}" 2>/dev/null
+}
+
+# ---------------------------------------------------------------------------
+# Phase 1: intercept --help / -h anywhere in the argument list
+# ---------------------------------------------------------------------------
+for arg in "$@"; do
+  if [[ "$arg" == "--help" ]] || [[ "$arg" == "-h" ]]; then
+    usage
+    exit 0
+  fi
+done
+
+# ---------------------------------------------------------------------------
+# Phase 2: parse global options (before subcommand)
+# ---------------------------------------------------------------------------
+FORCE_BUILD=false
+NO_GIT_ROOT=false
+NO_GIT_INIT=false
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --build|-b)
+      FORCE_BUILD=true
+      shift
+      ;;
+    --no-git-root)
+      NO_GIT_ROOT=true
+      shift
+      ;;
+    --no-git-init)
+      NO_GIT_INIT=true
+      shift
+      ;;
+    --)
+      shift
+      break
+      ;;
+    -*)
+      echo "Unknown global option: $1" >&2
+      usage >&2
+      exit 1
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+
+# ---------------------------------------------------------------------------
+# Phase 3: identify subcommand
+# ---------------------------------------------------------------------------
+SUBCOMMAND="${1:-tui}"
+if [[ -n "${1:-}" ]]; then
+  shift
 fi
 
-# --- Subcommands that don't start a container ---
+# ---------------------------------------------------------------------------
+# Phase 4: subcommand-specific parsing
+# ---------------------------------------------------------------------------
+WEB_PORT="$DEFAULT_PORT"
+WEB_NO_OPEN=false
+WEB_EXTRA_ARGS=()
+TUI_EXTRA_ARGS=()
 
-if [[ "${1:-}" == "projects" ]]; then
+# projects is handled immediately below
+if [[ "$SUBCOMMAND" == "projects" ]]; then
+  # projects takes no extra options; any remaining args are ignored
+  :
+elif [[ "$SUBCOMMAND" == "web" ]]; then
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --port|-p)
+        if [[ -n "${2:-}" ]] && [[ "${2:-}" != -* ]]; then
+          WEB_PORT="$2"
+          shift 2
+        else
+          echo "Error: --port requires an argument" >&2
+          exit 1
+        fi
+        ;;
+      --no-open)
+        WEB_NO_OPEN=true
+        shift
+        ;;
+      --)
+        shift
+        break
+        ;;
+      -*)
+        echo "Unknown web option: $1" >&2
+        usage >&2
+        exit 1
+        ;;
+      *)
+        WEB_EXTRA_ARGS+=("$1")
+        shift
+        ;;
+    esac
+  done
+elif [[ "$SUBCOMMAND" == "tui" ]] || [[ "$SUBCOMMAND" == "" ]]; then
+  SUBCOMMAND="tui"
+  TUI_EXTRA_ARGS=("$@")
+else
+  echo "Unknown subcommand: $SUBCOMMAND" >&2
+  usage >&2
+  exit 1
+fi
+
+# ---------------------------------------------------------------------------
+# Subcommand: projects (no container needed)
+# ---------------------------------------------------------------------------
+if [[ "$SUBCOMMAND" == "projects" ]]; then
   DATA_ROOT="${XDG_DATA_HOME:-$HOME/.local/share}/opencode"
   if [[ ! -d "$DATA_ROOT" ]]; then
     echo "No projects found in $DATA_ROOT" >&2
@@ -91,8 +241,11 @@ if [[ "${1:-}" == "projects" ]]; then
   exit 0
 fi
 
+# ---------------------------------------------------------------------------
+# Container setup (common to tui and web)
+# ---------------------------------------------------------------------------
+
 # Resolve script directory, even if installed via symlink.
-# Works on macOS (no readlink -f) and Linux.
 SCRIPT_PATH="$0"
 while [[ -L "$SCRIPT_PATH" ]]; do
   LINK_TARGET=$(readlink "$SCRIPT_PATH")
@@ -107,66 +260,22 @@ CONTAINER_DIR="$(cd "$SCRIPT_DIR/../container" && pwd)"
 
 # Auto-build the image on first run, or when --build is passed.
 if [[ "$FORCE_BUILD" == true ]] || ! podman image exists "$IMAGE" >/dev/null 2>&1; then
-  if [[ ! -f "$CONTAINER_DIR/Containerfile" ]]; then
-    echo "Image $IMAGE not found and no Containerfile in $CONTAINER_DIR" >&2
-    echo "Please run: podman build -t $IMAGE $CONTAINER_DIR" >&2
-    exit 1
-  fi
-  echo "Building $IMAGE ..." >&2
-  podman build -t "$IMAGE" "$CONTAINER_DIR" >&2
-fi
-
-# Detect web mode early so we can skip port scanning for TUI/subcommands
-IS_WEB=false
-for arg in "$@"; do
-  if [[ "$arg" == "web" ]]; then
-    IS_WEB=true
-    break
-  fi
-done
-
-# Find next free port (macOS: lsof, Linux: ss) — only needed for web mode
-if [[ "$IS_WEB" == true ]]; then
-  find_free_port() {
-      local port="$1"
-      if command -v lsof >/dev/null 2>&1; then
-          while lsof -Pi :${port} -sTCP:LISTEN -t >/dev/null 2>&1; do
-              port=$((port + 1))
-          done
-      elif command -v ss >/dev/null 2>&1; then
-          while ss -tln 2>/dev/null | grep -q "LISTEN.*:${port} "; do
-              port=$((port + 1))
-          done
-      fi
-      echo "$port"
-  }
-
-  PORT=$(find_free_port "$REQUESTED_PORT")
-  if [[ "$PORT" != "$REQUESTED_PORT" ]]; then
-      echo "Port ${REQUESTED_PORT} in use, using port ${PORT} instead" >&2
-  fi
+  build_image "$CONTAINER_DIR"
 fi
 
 # Resolve symlinks in a path (macOS: /var → /private/var, etc.).
-# Uses cd + pwd -P for portability (works on macOS and Linux).
-resolve_path() {
-  (cd "$1" && pwd -P) 2>/dev/null || printf '%s\n' "$1"
-}
+PWD_RESOLVED=$(resolve_path "$PWD")
 
 # Detect git root on the host. If we're inside a git repo, mount the repo root
 # as /code so the container can discover .git and correctly identify the project.
-# This matches how native opencode works — project boundaries are git roots.
-# If git is not available or we're not in a repo, fall back to $PWD.
-PWD_RESOLVED=$(resolve_path "$PWD")
-if [[ -z "${OPENCODE_NO_GIT_ROOT:-}" ]] && command -v git >/dev/null 2>&1; then
+GIT_ROOT=""
+if [[ "$NO_GIT_ROOT" == false ]] && command -v git >/dev/null 2>&1; then
   GIT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || true)
-  if [[ -n "${GIT_ROOT:-}" ]]; then
-    CODE_DIR=$(resolve_path "$GIT_ROOT")
-    PROJECT_ID=$(echo -n "$CODE_DIR" | base64 | tr -d '\n' | tr '+/' '-_' | tr -d '=')
-  else
-    CODE_DIR="$PWD_RESOLVED"
-    PROJECT_ID=$(echo -n "$PWD_RESOLVED" | base64 | tr -d '\n' | tr '+/' '-_' | tr -d '=')
-  fi
+fi
+
+if [[ -n "${GIT_ROOT:-}" ]]; then
+  CODE_DIR=$(resolve_path "$GIT_ROOT")
+  PROJECT_ID=$(echo -n "$CODE_DIR" | base64 | tr -d '\n' | tr '+/' '-_' | tr -d '=')
 else
   CODE_DIR="$PWD_RESOLVED"
   PROJECT_ID=$(echo -n "$PWD_RESOLVED" | base64 | tr -d '\n' | tr '+/' '-_' | tr -d '=')
@@ -174,7 +283,6 @@ fi
 
 DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/opencode/$PROJECT_ID"
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/opencode/$PROJECT_ID"
-LABEL_KEY="opencode.project.id"
 
 if [[ -n "${GIT_ROOT:-}" ]] && [[ "$CODE_DIR" != "$PWD_RESOLVED" ]]; then
   echo "Git repo detected; mounting root: $CODE_DIR" >&2
@@ -185,8 +293,8 @@ mkdir -p "$DATA_DIR" "$CONFIG_DIR"
 # Prevent duplicate containers for the same project using the full label value
 RUNNING_NAME=$(podman ps --filter "label=${LABEL_KEY}=${PROJECT_ID}" --format '{{.Names}}' | head -n1)
 if [[ -n "$RUNNING_NAME" ]]; then
-  echo "opencode is already running for this project: ${RUNNING_NAME}"
-  echo "Attach with: podman attach ${RUNNING_NAME}"
+  echo "opencode is already running for this project: ${RUNNING_NAME}" >&2
+  echo "Attach with: podman attach ${RUNNING_NAME}" >&2
   exit 1
 fi
 
@@ -199,30 +307,69 @@ PODMAN_ARGS=(
   -e OPENCODE_DISABLE_DEFAULT_PLUGINS=true
 )
 
-if [[ "$IS_WEB" == true ]]; then
-  # Start container in background; set EXIT trap BEFORE podman run so
-  # cleanup fires on Ctrl+C, error, or normal exit
+if [[ "$NO_GIT_INIT" == true ]]; then
+  PODMAN_ARGS+=(-e OPENCODE_NO_GIT_INIT=1)
+fi
+
+# ---------------------------------------------------------------------------
+# Subcommand: web
+# ---------------------------------------------------------------------------
+if [[ "$SUBCOMMAND" == "web" ]]; then
+  PORT=$(find_free_port "$WEB_PORT")
+  if [[ "$PORT" != "$WEB_PORT" ]]; then
+    echo "Port ${WEB_PORT} in use, using port ${PORT} instead" >&2
+  fi
+
+  # Start container in background
   podman run -i --rm --init \
     "${PODMAN_ARGS[@]}" \
     -p "${PORT}:${PORT}" \
     "${IMAGE}" \
-    "$@" --hostname 0.0.0.0 --port "${PORT}" &
+    web --hostname 0.0.0.0 --port "${PORT}" \
+    "${WEB_EXTRA_ARGS[@]+"${WEB_EXTRA_ARGS[@]}"}" &
   CONTAINER_PID=$!
 
   # Wait briefly for Podman to register the container, then look up its name
   CONTAINER_NAME=""
-  for _ in {1..20}; do
+  for _ in $(seq 1 20); do
     CONTAINER_NAME=$(podman ps --filter "label=${LABEL_KEY}=${PROJECT_ID}" --format '{{.Names}}' | head -n1)
     [[ -n "$CONTAINER_NAME" ]] && break
     sleep 0.1
   done
-  if [[ -n "$CONTAINER_NAME" ]]; then
-    CODE_B64=$(printf '%s' '/code' | base64 | tr -d '\n' | tr '+/' '-_' | tr -d '=')
-    URL="http://localhost:${PORT}/${CODE_B64}"
-    echo "opencode web container: ${CONTAINER_NAME}"
-    echo "URL: ${URL}"
 
-    # Auto-open browser (macOS: open, Linux: xdg-open)
+  if [[ -z "$CONTAINER_NAME" ]]; then
+    echo "Error: container failed to start" >&2
+    kill $CONTAINER_PID 2>/dev/null || true
+    wait $CONTAINER_PID 2>/dev/null || true
+    exit 1
+  fi
+
+  CODE_B64=$(printf '%s' '/code' | base64 | tr -d '\n' | tr '+/' '-_' | tr -d '=')
+  URL="http://localhost:${PORT}/${CODE_B64}"
+
+  echo "opencode web container: ${CONTAINER_NAME}"
+
+  # Wait for the HTTP port to be responsive before opening browser
+  echo -n "Waiting for server to start" >&2
+  http_ready=false
+  for _ in $(seq 1 30); do
+    if port_is_open localhost "$PORT"; then
+      http_ready=true
+      break
+    fi
+    echo -n "." >&2
+    sleep 1
+  done
+  echo "" >&2
+
+  if [[ "$http_ready" == false ]]; then
+    echo "Warning: server did not respond on port ${PORT}" >&2
+  fi
+
+  echo "URL: ${URL}"
+
+  # Auto-open browser only if port is ready and --no-open was not passed
+  if [[ "$http_ready" == true ]] && [[ "$WEB_NO_OPEN" == false ]]; then
     if command -v open >/dev/null 2>&1; then
       open "$URL"
     elif command -v xdg-open >/dev/null 2>&1; then
@@ -233,7 +380,7 @@ if [[ "$IS_WEB" == true ]]; then
   cleanup() {
     trap - EXIT INT TERM
     echo ""
-    echo "Stopping opencode container..."
+    echo "Stopping opencode container..." >&2
     local name
     name=$(podman ps --filter "label=${LABEL_KEY}=${PROJECT_ID}" --format '{{.Names}}' | head -n1)
     if [[ -n "$name" ]]; then
@@ -245,10 +392,13 @@ if [[ "$IS_WEB" == true ]]; then
 
   # Wait for container; || true prevents set -e from skipping cleanup
   wait $CONTAINER_PID || true
+
+# ---------------------------------------------------------------------------
+# Subcommand: tui (default)
+# ---------------------------------------------------------------------------
 else
-  # TUI mode: needs -t for interactive terminal
   podman run -it --rm \
     "${PODMAN_ARGS[@]}" \
     "${IMAGE}" \
-    "$@"
+    "${TUI_EXTRA_ARGS[@]+"${TUI_EXTRA_ARGS[@]}"}"
 fi
