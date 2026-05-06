@@ -77,24 +77,35 @@ if [[ "$FORCE_BUILD" == true ]] || ! podman image exists "$IMAGE" >/dev/null 2>&
   podman build -t "$IMAGE" "$CONTAINER_DIR" >&2
 fi
 
-# Find next free port (macOS: lsof, Linux: ss)
-find_free_port() {
-    local port="$1"
-    if command -v lsof >/dev/null 2>&1; then
-        while lsof -Pi :${port} -sTCP:LISTEN -t >/dev/null 2>&1; do
-            port=$((port + 1))
-        done
-    elif command -v ss >/dev/null 2>&1; then
-        while ss -tln 2>/dev/null | grep -q "LISTEN.*:${port} "; do
-            port=$((port + 1))
-        done
-    fi
-    echo "$port"
-}
+# Detect web mode early so we can skip port scanning for TUI/subcommands
+IS_WEB=false
+for arg in "$@"; do
+  if [[ "$arg" == "web" ]]; then
+    IS_WEB=true
+    break
+  fi
+done
 
-PORT=$(find_free_port "$REQUESTED_PORT")
-if [[ "$PORT" != "$REQUESTED_PORT" ]]; then
-    echo "Port ${REQUESTED_PORT} in use, using port ${PORT} instead" >&2
+# Find next free port (macOS: lsof, Linux: ss) — only needed for web mode
+if [[ "$IS_WEB" == true ]]; then
+  find_free_port() {
+      local port="$1"
+      if command -v lsof >/dev/null 2>&1; then
+          while lsof -Pi :${port} -sTCP:LISTEN -t >/dev/null 2>&1; do
+              port=$((port + 1))
+          done
+      elif command -v ss >/dev/null 2>&1; then
+          while ss -tln 2>/dev/null | grep -q "LISTEN.*:${port} "; do
+              port=$((port + 1))
+          done
+      fi
+      echo "$port"
+  }
+
+  PORT=$(find_free_port "$REQUESTED_PORT")
+  if [[ "$PORT" != "$REQUESTED_PORT" ]]; then
+      echo "Port ${REQUESTED_PORT} in use, using port ${PORT} instead" >&2
+  fi
 fi
 
 # Detect git root on the host. If we're inside a git repo, mount the repo root
@@ -132,15 +143,6 @@ if [[ -n "$RUNNING_NAME" ]]; then
   echo "Attach with: podman attach ${RUNNING_NAME}"
   exit 1
 fi
-
-# Detect web mode
-IS_WEB=false
-for arg in "$@"; do
-  if [[ "$arg" == "web" ]]; then
-    IS_WEB=true
-    break
-  fi
-done
 
 # Common podman args (no --name — let Podman auto-generate to avoid collisions)
 PODMAN_ARGS=(
