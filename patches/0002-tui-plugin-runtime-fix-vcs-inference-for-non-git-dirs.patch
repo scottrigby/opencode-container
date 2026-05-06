@@ -1,0 +1,13 @@
+diff --git a/packages/opencode/src/cli/cmd/tui/plugin/runtime.ts b/packages/opencode/src/cli/cmd/tui/plugin/runtime.ts
+index 73193d1..361c0db 100644
+--- a/packages/opencode/src/cli/cmd/tui/plugin/runtime.ts
++++ b/packages/opencode/src/cli/cmd/tui/plugin/runtime.ts
+@@ -882,7 +882,7 @@ async function installPluginBySpec(
+     spec,
+     targets: manifest.targets,
+     global,
+-    vcs: dir.worktree && dir.worktree !== "/" ? "git" : undefined,
++    vcs: state.api.state.vcs ? "git" : undefined,
+     worktree: dir.worktree,
+     directory: dir.directory,
+   })

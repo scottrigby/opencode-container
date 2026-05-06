@@ -1,0 +1,15 @@
+diff --git a/packages/opencode/src/project/project.ts b/packages/opencode/src/project/project.ts
+index a2c1a09..d302993 100644
+--- a/packages/opencode/src/project/project.ts
++++ b/packages/opencode/src/project/project.ts
+@@ -207,8 +207,8 @@ export const layer: Layer.Layer<
+         if (!dotgit) {
+           return {
+             id: ProjectID.global,
+-            worktree: "/",
+-            sandbox: "/",
++            worktree: directory,
++            sandbox: directory,
+             vcs: fakeVcs,
+           }
+         }

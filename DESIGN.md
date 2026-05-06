@@ -144,32 +144,19 @@ monorepos where you only want to work on one package).
 
 ---
 
-## 11. Upstream source patches (not in this repo)
+## 11. Upstream source patches
 
-Two patches were applied to the upstream source tree (`opencode-src`) but are
-**not part of this project**. They are documented here for completeness and as
-a reminder to contribute them upstream:
+Two patches are included in the [`patches/`](./patches) directory as a reminder
+to contribute them upstream. They are **not required** for daily use; the
+`entrypoint.sh` + host git detection handle the pre-built image.
 
-### `project.fromDirectory` non-git fallback
-
-In `packages/opencode/src/project/project.ts`, when no `.git` is found, the
-original code returns `worktree: "/"`. Changing it to use the actual `directory`
-prevents the server from collapsing all non-git directories into a single
-global project.
+| Patch | File | What it fixes |
+|-------|------|---------------|
+| `0001-project-fromdirectory-use-directory-for-non-git-work.patch` | `packages/opencode/src/project/project.ts` | When no `.git` is found, use the actual `directory` instead of `"/"` as the worktree. Prevents collapsing all non-git directories into a single global project. |
+| `0002-tui-plugin-runtime-fix-vcs-inference-for-non-git-dirs.patch` | `packages/opencode/src/cli/cmd/tui/plugin/runtime.ts` | Infer `vcs` from actual sync state instead of `worktree !== "/"`. Prevents misreporting non-git directories as git. |
 
 If accepted upstream, the `entrypoint.sh` `git init` workaround for non-git
 directories could be removed.
-
-### TUI plugin runtime `vcs` inference
-
-In `packages/opencode/src/cli/cmd/tui/plugin/runtime.ts`, the original code
-infers `vcs: "git"` from `dir.worktree !== "/"`. Replacing this with a check
-against the actual sync state prevents the plugin runtime from misreporting a
-non-git directory as git after the worktree change.
-
-Both patches are tracked in the upstream source repository, not here. The
-wrapper's `entrypoint.sh` + host git detection make them non-urgent for daily
-use.
 
 ---
 
