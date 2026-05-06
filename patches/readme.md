@@ -15,6 +15,7 @@ removed.
 |-------|------|---------------|
 | [`0001-project-fromdirectory-use-directory-for-non-git-work.patch`](0001-project-fromdirectory-use-directory-for-non-git-work.patch) | `packages/opencode/src/project/project.ts` | When no `.git` is found, use the actual `directory` instead of `"/"` as the worktree. Prevents collapsing all non-git directories into a single global project. |
 | [`0002-tui-plugin-runtime-fix-vcs-inference-for-non-git-dirs.patch`](0002-tui-plugin-runtime-fix-vcs-inference-for-non-git-dirs.patch) | `packages/opencode/src/cli/cmd/tui/plugin/runtime.ts` | Infer `vcs` from actual sync state instead of `worktree !== "/"`. Prevents misreporting non-git directories as git. |
+| [`0003-ghostty-web-pass-absolute-wasm-url-for-non-root-spa-routes.patch`](0003-ghostty-web-pass-absolute-wasm-url-for-non-root-spa-routes.patch) | `packages/app/src/components/terminal.tsx`, `packages/app/src/env.d.ts` | Fixes terminal WASM loading when the SPA is served from non-root routes. Ghostty's relative-path fallback resolves to the SPA HTML catch-all instead of the binary. |
 
 ## Contributing upstream
 
@@ -22,10 +23,12 @@ These patches should be contributed to the [opencode upstream repository](https:
 
 - [ ] `project.fromDirectory` non-git fallback — `packages/opencode/src/project/project.ts`
 - [ ] TUI plugin runtime `vcs` inference — `packages/opencode/src/cli/cmd/tui/plugin/runtime.ts`
+- [ ] ghostty-web absolute WASM URL for SPA routing — `packages/app/src/components/terminal.tsx`
 
 To apply them locally for testing, run from the root of a cloned `opencode` repository:
 
 ```bash
 git apply /path/to/opencode-container/patches/0001-project-fromdirectory-use-directory-for-non-git-work.patch
 git apply /path/to/opencode-container/patches/0002-tui-plugin-runtime-fix-vcs-inference-for-non-git-dirs.patch
+git apply /path/to/opencode-container/patches/0003-ghostty-web-pass-absolute-wasm-url-for-non-root-spa-routes.patch
 ```

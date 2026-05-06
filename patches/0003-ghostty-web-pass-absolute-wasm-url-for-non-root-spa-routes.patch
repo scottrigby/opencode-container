@@ -1,0 +1,63 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: opencode-container <dev@opencode.ai>
+Date: Wed, 6 May 2026 00:00:00 +0000
+Subject: [PATCH] fix(terminal): pass absolute WASM URL to ghostty-web
+
+Ghostty.load() defaults to a relative `./ghostty-vt.wasm` fallback when
+no explicit path is provided. In a single-page app served from non-root
+routes (e.g. `/L2NvZGU/session/...`), that relative path resolves to a
+route that does not exist, so the server returns the SPA shell HTML
+instead of the WASM binary. The browser then fails with:
+
+  WebAssembly.compile(): expected magic word 00 61 73 6d, found 3c 21 64 6f @+0
+
+(0x3c21646f = "<!do", the start of the HTML document.)
+
+Fix by importing the `.wasm` asset through Vite's `?url` mechanism, which
+emits the file to `dist/` with a hashed absolute URL, and passing that
+URL directly to `Ghostty.load()`. This bypasses all relative-path
+fallbacks entirely.
+
+Also adds the `*.wasm?url` type declaration required for TypeScript/Bun
+to accept the import.
+
+---
+ packages/app/src/components/terminal.tsx | 3 ++-
+ packages/app/src/env.d.ts                | 5 +++++
+ 2 files changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/packages/app/src/components/terminal.tsx b/packages/app/src/components/terminal.tsx
+index 6dae9de..fff93fa 100644
+--- a/packages/app/src/components/terminal.tsx
++++ b/packages/app/src/components/terminal.tsx
+@@ -4,6 +4,7 @@ import { resolveThemeVariant } from "@opencode-ai/ui/theme/resolve"
+ import type { HexColor } from "@opencode-ai/ui/theme/types"
+ import { showToast } from "@opencode-ai/ui/toast"
+ import type { FitAddon, Ghostty, Terminal as Term } from "ghostty-web"
++import ghosttyWasmUrl from "ghostty-web/ghostty-vt.wasm?url"
+ import { type ComponentProps, createEffect, createMemo, onCleanup, onMount, splitProps } from "solid-js"
+ import { SerializeAddon } from "@/addons/serialize"
+ import { matchKeybind, parseKeybind } from "@/context/command"
+@@ -33,7 +34,7 @@ let shared: Promise<{ mod: typeof import("ghostty-web"); ghostty: Ghostty }> | u
+ const loadGhostty = () => {
+   if (shared) return shared
+   shared = import("ghostty-web")
+-    .then(async (mod) => ({ mod, ghostty: await mod.Ghostty.load() }))
++    .then(async (mod) => ({ mod, ghostty: await mod.Ghostty.load(ghosttyWasmUrl) }))
+     .catch((err) => {
+       shared = undefined
+       throw err
+
+diff --git a/packages/app/src/env.d.ts b/packages/app/src/env.d.ts
+index 39f827e..9111974 100644
+--- a/packages/app/src/env.d.ts
++++ b/packages/app/src/env.d.ts
+@@ -19,3 +19,8 @@ export declare module "solid-js" {
+     }
+   }
+ }
++
++declare module "*.wasm?url" {
++  const src: string
++  export default src
++}
