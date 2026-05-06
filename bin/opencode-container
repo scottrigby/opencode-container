@@ -15,7 +15,7 @@ for arg in "$@"; do
     REST_ARGS+=("$arg")
   fi
 done
-set -- "${REST_ARGS[@]}"
+set -- "${REST_ARGS[@]:-}"
 
 # --- Subcommands that don't start a container ---
 
