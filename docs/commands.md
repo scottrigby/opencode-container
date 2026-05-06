@@ -136,4 +136,4 @@ etc.).
 
 [`docs/design.md`](design.md) — architecture rationale
 
-[`docs/manual-commands.md`](manual-commands.md) — equivalent raw Podman commands
+[`docs/manual-process.md`](manual-process.md) — equivalent raw Podman commands

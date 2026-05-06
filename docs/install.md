@@ -23,19 +23,17 @@ alias oc='opencode-container'   # add to shell profile
 source <(opencode-container completion --bash)
 
 # Every new session:
-opencode-container completion --bash > /etc/bash_completion.d/opencode-container
-# macOS:
-# opencode-container completion --bash > /usr/local/etc/bash_completion.d/opencode-container
+opencode-container completion --bash > ~/.local/share/bash-completion/completions/opencode-container
 ```
 
 ### Zsh (macOS default)
 
 ```bash
-mkdir -p ~/.zsh/completions
-opencode-container completion --zsh > ~/.zsh/completions/_opencode-container
-# ensure ~/.zsh/completions is in $fpath in ~/.zshrc:
-# fpath=(~/.zsh/completions $fpath)
-autoload -Uz compinit && compinit
+# Current session:
+source <(opencode-container completion --zsh)
+
+# Every new session:
+opencode-container completion --zsh > "${fpath[1]}/_opencode-container"
 ```
 
 ## Data and config layout
@@ -61,15 +59,3 @@ To share auth between projects, copy `auth.json` manually:
 ```bash
 cp ~/.config/opencode/<encoding-a>/auth.json ~/.config/opencode/<encoding-b>/
 ```
-
-## Known issues
-
-- **Non-git directories:** If you run this in a directory without `.git`, the
-  container auto-initialises an empty git repo at `/code` so opencode treats it
-  as a proper project root. Remove `.git` on the host afterward if you don't
-  want it, or pass `--no-git-init` to skip the auto-initialisation entirely.
-  See [`docs/issues.md`](issues.md#non-git-directories-collapse-into-a-single-global-project)
-  for the full upstream context.
-- **Alpine glibc:** Native `.so` libraries loaded at runtime need glibc symbols.
-  The `gcompat` shim resolves this. See [`docs/issues.md`](issues.md#glibc--musl-on-alpine)
-  and [`docs/design.md`](design.md) for upstream context.

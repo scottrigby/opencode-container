@@ -7,13 +7,18 @@ Run the opencode CLI in a Podman container with per-project isolation.
 
 ```bash
 # TUI mode — image builds automatically on first run
-./bin/opencode-container
+opencode-container
 
 # Web mode
-./bin/opencode-container web
+opencode-container web
 ```
 
-[`docs/commands.md`](docs/commands.md) · [`docs/install.md`](docs/install.md) · [`docs/issues.md`](docs/issues.md) · [`docs/design.md`](docs/design.md)
+## Docs
+
+- [`install`](docs/install.md)
+- [`commands`](docs/commands.md)
+- [`design`](docs/design.md)
+- [`issues`](docs/issues.md)
 
 ## What it does
 
