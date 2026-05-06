@@ -29,16 +29,17 @@ while [[ -L "$SCRIPT_PATH" ]]; do
   fi
 done
 SCRIPT_DIR=$(cd "$(dirname "$SCRIPT_PATH")" && pwd)
+CONTAINER_DIR="$(cd "$SCRIPT_DIR/../container" && pwd)"
 
 # Auto-build the image on first run, or when --build is passed.
 if [[ "$FORCE_BUILD" == true ]] || ! podman image exists "$IMAGE" >/dev/null 2>&1; then
-  if [[ ! -f "$SCRIPT_DIR/Dockerfile" ]]; then
-    echo "Image $IMAGE not found and no Dockerfile in $SCRIPT_DIR" >&2
-    echo "Please run: podman build -t $IMAGE /path/to/opencode-container" >&2
+  if [[ ! -f "$CONTAINER_DIR/Containerfile" ]]; then
+    echo "Image $IMAGE not found and no Containerfile in $CONTAINER_DIR" >&2
+    echo "Please run: podman build -t $IMAGE $CONTAINER_DIR" >&2
     exit 1
   fi
   echo "Building $IMAGE ..." >&2
-  podman build -t "$IMAGE" "$SCRIPT_DIR" >&2
+  podman build -t "$IMAGE" "$CONTAINER_DIR" >&2
 fi
 
 # Find next free port (macOS: lsof, Linux: ss)

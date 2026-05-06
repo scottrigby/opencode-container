@@ -8,20 +8,20 @@ user, and per-project session isolation.
 
 ```bash
 # TUI mode — image builds automatically on first run
-./opencode-container
+./bin/opencode-container
 
 # Web mode
-./opencode-container web
+./bin/opencode-container web
 # open http://localhost:PORT
 
 # Force rebuild to pull latest upstream image
-./opencode-container --build web
+./bin/opencode-container --build web
 ```
 
 For convenience:
 
 ```bash
-ln -s "$PWD/opencode-container" ~/.local/bin/opencode-container
+ln -s "$PWD/bin/opencode-container" ~/.local/bin/opencode-container
 alias oc='opencode-container'   # add to shell profile
 ```
 
@@ -65,7 +65,7 @@ CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/opencode/$PROJECT_ID"
 mkdir -p "$DATA_DIR" "$CONFIG_DIR"
 
 # Build image (only needed once, or to update)
-podman build -t localhost/opencode-container /path/to/opencode-container
+podman build -t localhost/opencode-container /path/to/opencode-container/container
 
 # TUI
 podman run -it --rm \
