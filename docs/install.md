@@ -14,6 +14,30 @@ ln -s "$PWD/bin/opencode-container" ~/.local/bin/opencode-container
 alias oc='opencode-container'   # add to shell profile
 ```
 
+## Tab completion
+
+### Bash
+
+```bash
+# Current session:
+source <(opencode-container completion --bash)
+
+# Every new session:
+opencode-container completion --bash > /etc/bash_completion.d/opencode-container
+# macOS:
+# opencode-container completion --bash > /usr/local/etc/bash_completion.d/opencode-container
+```
+
+### Zsh (macOS default)
+
+```bash
+mkdir -p ~/.zsh/completions
+opencode-container completion --zsh > ~/.zsh/completions/_opencode-container
+# ensure ~/.zsh/completions is in $fpath in ~/.zshrc:
+# fpath=(~/.zsh/completions $fpath)
+autoload -Uz compinit && compinit
+```
+
 ## Data and config layout
 
 Each project is fully isolated:

@@ -37,9 +37,14 @@ GLOBAL OPTIONS
 COMMANDS
     tui                  Terminal UI mode (default when no subcommand is given)
     web                  Web UI mode
+    completion           Generate shell completion scripts
     projects             List all projects with isolated session data
 
 COMMAND OPTIONS
+    completion
+        --bash             Output bash completion script
+        --zsh              Output zsh completion script
+
     web
         -p, --port PORT    Port to listen on (default: 4096)
         --no-open          Do not auto-open the browser
@@ -51,6 +56,8 @@ EXAMPLES
     opencode-container -b web -p 5000       # Rebuild, then web on 5000
     opencode-container --no-git-root        # TUI, mount current dir
     opencode-container projects             # List isolated projects
+    opencode-container completion --bash    # Bash completion script
+    opencode-container completion --zsh     # Zsh completion script
 
 See docs/commands.md for full documentation.
 EOF
@@ -161,6 +168,25 @@ TUI_EXTRA_ARGS=()
 if [[ "$SUBCOMMAND" == "projects" ]]; then
   # projects takes no extra options; any remaining args are ignored
   :
+elif [[ "$SUBCOMMAND" == "completion" ]]; then
+  COMPLETION_SHELL=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --bash)
+        COMPLETION_SHELL="bash"
+        shift
+        ;;
+      --zsh)
+        COMPLETION_SHELL="zsh"
+        shift
+        ;;
+      *)
+        echo "Unknown completion option: $1" >&2
+        echo "Usage: opencode-container completion [--bash|--zsh]" >&2
+        exit 1
+        ;;
+    esac
+  done
 elif [[ "$SUBCOMMAND" == "web" ]]; then
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -238,6 +264,146 @@ if [[ "$SUBCOMMAND" == "projects" ]]; then
     fi
     echo "$decoded"
   done
+  exit 0
+fi
+
+# ---------------------------------------------------------------------------
+# Subcommand: completion (no container needed)
+# ---------------------------------------------------------------------------
+if [[ "$SUBCOMMAND" == "completion" ]]; then
+  if [[ -z "$COMPLETION_SHELL" ]]; then
+    cat <<'EOF'
+Generate shell completion scripts for opencode-container.
+
+Usage: opencode-container completion [--bash|--zsh]
+
+  --bash    Output bash completion script
+  --zsh     Output zsh completion script
+
+Examples:
+  opencode-container completion --bash > /etc/bash_completion.d/opencode-container
+  opencode-container completion --zsh > "${fpath[1]}/_opencode-container"
+EOF
+    exit 0
+  fi
+
+  if [[ "$COMPLETION_SHELL" == "bash" ]]; then
+    cat <<'BASHEOF'
+# opencode-container bash completion
+
+_opencode_container() {
+  local cur="${COMP_WORDS[COMP_CWORD]}"
+  local prev="${COMP_WORDS[COMP_CWORD-1]}"
+  local global_opts="-b --build --no-git-root --no-git-init -h --help"
+  local web_opts="-p --port --no-open"
+  local subcommands="completion tui web projects"
+
+  local i subcommand_seen=false subcommand=""
+  for (( i=1; i < COMP_CWORD; i++ )); do
+    case "${COMP_WORDS[i]}" in
+      --)
+        subcommand_seen=true
+        break
+        ;;
+      --build|-b|--no-git-root|--no-git-init|--help|-h)
+        continue
+        ;;
+      --port|-p|--bash|--zsh)
+        (( i++ ))
+        continue
+        ;;
+      completion|tui|web|projects)
+        subcommand_seen=true
+        subcommand="${COMP_WORDS[i]}"
+        break
+        ;;
+    esac
+  done
+
+  if [[ "$subcommand_seen" == false ]]; then
+    COMPREPLY=($(compgen -W "${global_opts} ${subcommands}" -- "${cur}"))
+    return
+  fi
+
+  case "$subcommand" in
+    completion)
+      COMPREPLY=($(compgen -W "--bash --zsh" -- "${cur}"))
+      return
+      ;;
+    web)
+      if [[ "$prev" == "--port" || "$prev" == "-p" ]]; then
+        COMPREPLY=()
+        return
+      fi
+      COMPREPLY=($(compgen -W "${web_opts}" -- "${cur}"))
+      return
+      ;;
+    tui|projects)
+      COMPREPLY=()
+      return
+      ;;
+  esac
+
+  COMPREPLY=()
+} && complete -F _opencode_container opencode-container
+BASHEOF
+  elif [[ "$COMPLETION_SHELL" == "zsh" ]]; then
+    cat <<'ZSHEOF'
+# opencode-container zsh completion
+
+autoload -Uz compinit && compinit
+
+_opencode_container() {
+  local -a opts cmds
+  opts=(
+    '-b:Force rebuild the container image'
+    '--build:Force rebuild the container image'
+    '--no-git-root:Mount current directory instead of git root'
+    '--no-git-init:Skip auto git init in non-git dirs'
+    '-h:Print usage and exit'
+    '--help:Print usage and exit'
+  )
+  cmds=(
+    'completion:Generate shell completion scripts'
+    'tui:Terminal UI mode (default)'
+    'web:Web UI mode'
+    'projects:List all projects with isolated session data'
+  )
+
+  # Determine current context
+  local cmd=""
+  local i
+  for (( i=2; i <= CURRENT; i++ )); do
+    case "${words[i]}" in
+      --) break ;;
+      -b|--build|--no-git-root|--no-git-init|-h|--help) continue ;;
+      -p|--port) (( i++ )); continue ;;
+      --bash|--zsh) continue ;;
+      completion|tui|web|projects) cmd="${words[i]}"; break ;;
+      *) break ;;
+    esac
+  done
+
+  if [[ -z "$cmd" ]]; then
+    compadd -- "${opts[@]}" "${cmds[@]}"
+    return
+  fi
+
+  case "$cmd" in
+    completion)
+      compadd -- '--bash:Output bash completion script' '--zsh:Output zsh completion script'
+      ;;
+    web)
+      compadd -- '-p:Port to listen on' '--port:Port to listen on' '--no-open:Do not auto-open the browser'
+      ;;
+    tui|projects)
+      ;;
+  esac
+}
+
+compdef _opencode_container opencode-container
+ZSHEOF
+  fi
   exit 0
 fi
 
