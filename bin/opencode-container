@@ -36,6 +36,8 @@ GLOBAL OPTIONS
                          devcontainer.json. Repeatable; later files win on
                          key collision. Requires npx (auto-installs
                          @devcontainers/cli and node-jq on first use).
+    --env-file PATH      Pass an environment file to the container.
+                         Repeatable. Auto-detects .env in project root.
     --no-git-root        Mount the current working directory instead of
                          auto-detecting the git repository root
     --no-git-init        Do not auto-initialise an empty git repo in
@@ -129,6 +131,7 @@ FORCE_BUILD=false
 NO_GIT_ROOT=false
 NO_GIT_INIT=false
 FEATURE_FILES=()
+ENV_FILES=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -142,6 +145,15 @@ while [[ $# -gt 0 ]]; do
         shift 2
       else
         echo "Error: --feature-file requires an argument" >&2
+        exit 1
+      fi
+      ;;
+    --env-file)
+      if [[ -n "${2:-}" ]] && [[ "${2:-}" != -* ]]; then
+        ENV_FILES+=("$2")
+        shift 2
+      else
+        echo "Error: --env-file requires an argument" >&2
         exit 1
       fi
       ;;
@@ -314,29 +326,17 @@ EOF
 _opencode_container() {
   local cur="${COMP_WORDS[COMP_CWORD]}"
   local prev="${COMP_WORDS[COMP_CWORD-1]}"
-  local global_opts="-b --build --feature-file --no-git-root --no-git-init -h --help"
+  local global_opts="-b --build --feature-file --env-file --no-git-root --no-git-init -h --help"
   local web_opts="-p --port --no-open"
   local subcommands="completion tui web projects"
 
   local i subcommand_seen=false subcommand=""
   for (( i=1; i < COMP_CWORD; i++ )); do
     case "${COMP_WORDS[i]}" in
-      --)
-        subcommand_seen=true
-        break
-        ;;
-      --build|-b|--no-git-root|--no-git-init|--help|-h|--feature-file)
-        continue
-        ;;
-      --port|-p|--bash|--zsh)
-        (( i++ ))
-        continue
-        ;;
-      completion|tui|web|projects)
-        subcommand_seen=true
-        subcommand="${COMP_WORDS[i]}"
-        break
-        ;;
+      --) break ;;
+      --build|-b|--no-git-root|--no-git-init|--help|-h|--feature-file|--env-file) continue ;;
+      --port|-p|--bash|--zsh) continue ;;
+      completion|tui|web|projects) subcommand_seen=true; subcommand="${COMP_WORDS[i]}"; break ;;
     esac
   done
 
@@ -376,19 +376,20 @@ autoload -Uz compinit && compinit
 _opencode_container() {
   local -a opts cmds
   opts=(
-    '-b:Force rebuild the container image'
-    '--build:Force rebuild the container image'
-    '--feature-file:Path to a JSON file with devcontainer features to merge'
-    '--no-git-root:Mount current directory instead of git root'
-    '--no-git-init:Skip auto git init in non-git dirs'
-    '-h:Print usage and exit'
-    '--help:Print usage and exit'
+    '-b'
+    '--build'
+    '--feature-file'
+    '--env-file'
+    '--no-git-root'
+    '--no-git-init'
+    '-h'
+    '--help'
   )
   cmds=(
-    'completion:Generate shell completion scripts'
-    'tui:Terminal UI mode (default)'
-    'web:Web UI mode'
-    'projects:List all projects with isolated session data'
+    'completion'
+    'tui'
+    'web'
+    'projects'
   )
 
   # Determine current context
@@ -398,7 +399,7 @@ _opencode_container() {
     case "${words[i]}" in
       --) break ;;
       -b|--build|--no-git-root|--no-git-init|-h|--help) continue ;;
-      --feature-file) (( i++ )); continue ;;
+      --feature-file|--env-file) (( i++ )); continue ;;
       -p|--port) (( i++ )); continue ;;
       --bash|--zsh) continue ;;
       completion|tui|web|projects) cmd="${words[i]}"; break ;;
@@ -407,16 +408,17 @@ _opencode_container() {
   done
 
   if [[ -z "$cmd" ]]; then
-    compadd -- "${opts[@]}" "${cmds[@]}"
+    compadd -a opts
+    compadd -a cmds
     return
   fi
 
   case "$cmd" in
     completion)
-      compadd -- '--bash:Output bash completion script' '--zsh:Output zsh completion script'
+      compadd --bash --zsh
       ;;
     web)
-      compadd -- '-p:Port to listen on' '--port:Port to listen on' '--no-open:Do not auto-open the browser'
+      compadd -p --port --no-open
       ;;
     tui|projects)
       ;;
@@ -472,6 +474,12 @@ if [[ -n "${GIT_ROOT:-}" ]] && [[ "$CODE_DIR" != "$PWD_RESOLVED" ]]; then
 fi
 
 mkdir -p "$DATA_DIR" "$CONFIG_DIR"
+
+# Auto-detect .env file in project root (CODE_DIR)
+if [[ -f "$CODE_DIR/.env" ]]; then
+  ENV_FILES+=("$CODE_DIR/.env")
+  echo "Auto-detected env file: $CODE_DIR/.env" >&2
+fi
 
 # Hint if the project has its own .devcontainer directory
 if [[ -f "$CODE_DIR/.devcontainer/devcontainer.json" ]]; then
@@ -557,6 +565,21 @@ if [[ ${#FEATURE_FILES[@]} -gt 0 ]]; then
     EXTRA_RUNARGS="[\"-p=${PORT}:${PORT}\"]"
   fi
 
+  # Build env-file args for devcontainer.json runArgs
+  ENV_ARGS='[]'
+  if [[ ${#ENV_FILES[@]} -gt 0 ]]; then
+    env_json=""
+    for f in "${ENV_FILES[@]}"; do
+      if [[ -n "$env_json" ]]; then
+        env_json+=","
+      fi
+      # Escape backslashes and quotes for JSON using jq
+      escaped_f=$(printf '%s' "$f" | npx --yes node-jq -Rr '@json')
+      env_json+="\"--env-file\",$escaped_f"
+    done
+    ENV_ARGS="[$env_json]"
+  fi
+
   # Build environment map (values MUST be strings per devcontainer spec)
   if [[ "$NO_GIT_INIT" == true ]]; then
     CONTAINER_ENV='{"OPENCODE_DISABLE_DEFAULT_PLUGINS":"true","OPENCODE_NO_GIT_INIT":"1"}'
@@ -573,6 +596,7 @@ if [[ ${#FEATURE_FILES[@]} -gt 0 ]]; then
     --argjson features "$MERGED_FEATURES" \
     --argjson forwardPorts "$FORWARD_PORTS" \
     --argjson extraRunArgs "$EXTRA_RUNARGS" \
+    --argjson envArgs "$ENV_ARGS" \
     --arg label "${LABEL_KEY}=${PROJECT_ID}" \
     --arg dataDir "$DATA_DIR" \
     --arg configDir "$CONFIG_DIR" \
@@ -594,6 +618,7 @@ if [[ ${#FEATURE_FILES[@]} -gt 0 ]]; then
       runArgs: (
         ["--label=" + $label] +
         ["--init"] +
+        $envArgs +
         $extraRunArgs
       ),
       overrideCommand: false,
@@ -723,6 +748,11 @@ PODMAN_ARGS=(
 if [[ "$NO_GIT_INIT" == true ]]; then
   PODMAN_ARGS+=(-e OPENCODE_NO_GIT_INIT=1)
 fi
+
+# Add env-file args for Podman
+for f in "${ENV_FILES[@]}"; do
+  PODMAN_ARGS+=(--env-file "$f")
+done
 
 # ---------------------------------------------------------------------------
 # Subcommand: web

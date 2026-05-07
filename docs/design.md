@@ -349,6 +349,18 @@ removes the gcompat shim and aligns with ecosystem expectations. A single
 base image also simplifies cache management and avoids cross-platform cache
 invalidation.
 
+### Why `.env` auto-detection
+
+The wrapper auto-detects `.env` in the project root (git repository root or
+current directory) and passes it to the container via `--env-file`. This follows
+the principle of least surprise — if a project has environment configuration, it
+should be available in the container without explicit flags.
+
+Manual `--env-file <path>` flags (repeatable) override and supplement the
+auto-detected file. In devcontainer mode, `--env-file` entries are added to
+`runArgs` in the generated `devcontainer.json`. In fast path, they are passed
+directly to `podman run`.
+
 ---
 
 ## Open questions / future work
@@ -357,7 +369,7 @@ invalidation.
   `entrypoint.sh` `git init` workaround can be removed.
 - **Cross-platform `lsof`/`ss`:** Windows/WSL support would need a different port
   scan mechanism.
-- **`.env` / `--env` support:** No mechanism exists for passing arbitrary host
-  environment variables into the container.
+- **`--env` / `--local-env` support:** No mechanism exists for passing individual
+  environment variables or host environment references into the container.
 - **Custom mounts:** No mechanism exists for additional bind mounts (e.g.
   `~/.aws`, `~/.kube/config`).

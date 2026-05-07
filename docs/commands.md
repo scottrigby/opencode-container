@@ -35,6 +35,13 @@ Requires `npx` (which will auto-install `@devcontainers/cli` and
 `node-jq` on first use). When this flag is used, the wrapper uses the
 devcontainer CLI instead of direct `podman run`.
 
+`--env-file` *PATH*
+: Pass an environment file to the container. Repeatable. The wrapper
+auto-detects `.env` in the project root (git repository root or current
+directory) and passes it automatically. Additional files can be specified
+manually. In devcontainer mode, adds `--env-file` to `runArgs`. In fast
+path, passes `--env-file` directly to Podman.
+
 `--no-git-root`
 : Mount the current working directory instead of auto-detecting and
 mounting the git repository root.

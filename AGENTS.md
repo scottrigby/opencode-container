@@ -53,7 +53,7 @@ verify correct project scoping.
 Full reference: [docs/commands.md](docs/commands.md) · `opencode-container --help`
 
 Quick summary: `[global-options] [subcommand] [subcommand-options]`
-- Global: `-b/--build`, `--feature-file PATH`, `--no-git-root`, `--no-git-init`, `-h/--help`
+- Global: `-b/--build`, `--feature-file PATH`, `--env-file PATH`, `--no-git-root`, `--no-git-init`, `-h/--help`
 - Subcommands: `tui` (default), `web`, `completion`, `projects`
 - `web`: `-p/--port PORT`, `--no-open`
 

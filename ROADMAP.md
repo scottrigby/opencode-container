@@ -4,16 +4,18 @@ This file tracks feature ideas and known issues for post-MVP implementation.
 
 ## Environment Variable Support
 
-### 1. `.env` File Support
+### 1. `.env` File Support ✅
+
+**Status:** Implemented.
 
 **Feature:** Auto-detect `.env` files and support `--env-file` flag for custom locations.
 
 **Implementation:**
-- Auto-detect `.env` in project root (and `.devcontainer/devcontainer.env`)
+- Auto-detect `.env` in project root (git repository root or current directory)
 - Support `--env-file <path>` flag (repeatable)
 - For each env file, add to generated `devcontainer.json`:
   ```json
-  "runArgs": ["--env-file", ".devcontainer/devcontainer.env"]
+  "runArgs": ["--env-file", "/path/to/.env"]
   ```
 - For Podman fast path, pass `--env-file` directly (supports multiple)
 

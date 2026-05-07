@@ -104,7 +104,7 @@ See [`ROADMAP.md`](ROADMAP.md) for detailed implementation notes.
 
 | Item | Rationale / Notes |
 |---|---|
-| **Support `.env` files and `--env-file` flag** | Auto-detect `.env` in project root (and `.devcontainer/devcontainer.env`). `--env-file <path>` (repeatable) adds `"runArgs": ["--env-file", ".devcontainer/devcontainer.env"]` to `devcontainer.json` and passes `--env-file` directly in Podman fast path. |
+| ~~**Support `.env` files and `--env-file` flag**~~ ✅ | ~~Implemented.~~ Auto-detects `.env` in project root. `--env-file <path>` (repeatable) adds `--env-file` to `runArgs` in `devcontainer.json` and passes directly to Podman fast path. |
 | **Support `--env` and `--local-env` flags** | `--env VAR=value` (repeatable) sets literal values in `containerEnv`. `--local-env VAR` (repeatable) sets `containerEnv` values from host using `${localEnv:VAR}` syntax. Merge all into `containerEnv` key. See [VS Code Remote - Environment Variables](https://code.visualstudio.com/remote/advancedcontainers/environment-variables). |
 | **Support additional mounts** | No mechanism exists for custom bind mounts (e.g., `~/.aws`, `~/.kube/config`, local package caches). A `--mount source=...,target=...` flag (repeatable) would be useful. |
 | **Ctrl+C confirmation before closing** | Web mode: host shell trap can `read -p "Quit? [y/N] "` before `podman stop`. TUI mode: harder — terminal occupied by TUI process, host-side prompt competes for same PTY. Would need signal injection or separate notification mechanism. Community issue: [anomalyco/opencode#10975](https://github.com/anomalyco/opencode/issues/10975). |
