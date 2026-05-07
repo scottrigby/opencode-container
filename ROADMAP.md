@@ -19,7 +19,19 @@ This file tracks feature ideas and known issues for post-MVP implementation.
   ```
 - For Podman fast path, pass `--env-file` directly (supports multiple)
 
-### 2. `--env` and `--local-env` Flags
+### 2. Zsh Completion Issues
+
+**Status:** Known issue. Zsh completion has several bugs:
+
+- `opencode-container completion` only completes `--zsh`, not `--bash`
+- After choosing a subcommand (e.g., `tui`), global options are not offered
+- `opencode-container web` should complete `--port` and global options
+
+**Root cause:** The `compadd` logic and context detection in the zsh completion
+function need review. The bash completion works correctly; zsh needs similar
+filtering logic.
+
+### 3. `--env` and `--local-env` Flags
 
 **Feature:** Pass environment variables directly or from host environment.
 
@@ -43,7 +55,7 @@ This file tracks feature ideas and known issues for post-MVP implementation.
 
 ## Ctrl+C / Ctrl+D Confirmation Prompt
 
-### 3. Session Close Confirmation
+### 4. Session Close Confirmation
 
 **Feature:** Capture Ctrl+C or Ctrl+D and prompt user before closing session.
 
