@@ -43,6 +43,9 @@ Examples:
   tests/e2e/run-test 1          # Fast path TUI
   tests/e2e/run-test 4          # Test merge collision
   tests/e2e/run-test all        # Quick sanity suite
+
+For manual verification steps (commands to run inside the container),
+see: tests/testdata/README.md
 EOF
 }
 
