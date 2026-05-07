@@ -21,22 +21,41 @@ Podman is used because:
 
 ---
 
-## 2. Alpine + `gcompat` instead of Debian
+## 2. Debian base image (`node:22-slim`)
 
-The [upstream image](https://github.com/anomalyco/opencode/blob/dev/packages/opencode/Dockerfile)
-is Alpine-based (`ghcr.io/anomalyco/opencode:latest`). Rather than maintaining a
-forked Debian image, we layer on `gcompat` to resolve glibc symbol errors at
-runtime:
+The upstream image (`ghcr.io/anomalyco/opencode:latest`) is Alpine-based and
+uses musl libc, which lacks glibc symbols required by native `.so` libraries:
 
 ```
 Error relocating ...so: gnu_get_libc_version: symbol not found
 ```
 
-Native `.so` libraries loaded via Bun FFI expect glibc. `LD_PRELOAD=/lib/libgcompat.so.0`
-shims these calls. This keeps us close to upstream and avoids a full rebuild.
+Most [devcontainer features](https://containers.dev/features)
+(community-maintained installation scripts for Node, Python, Go, etc.) assume a
+glibc-based distribution and fail on Alpine.
+
+The glibc issue also breaks the **web UI terminal**. The terminal WebAssembly
+module (`ghostty-vt.wasm`) requires glibc and fails on Alpine even with `gcompat`:
+
+```
+WebAssembly.compile(): expected magic word 00 61 73 6d, found 3c 21 64 6f @+0
+```
+
+The magic word error is the browser reading HTML bytes (`0x3c21646f` = `<!do`)
+as WASM — the WASM file was not found and the server returned the SPA shell.
+
+Therefore, the base image is **Debian** (`node:22-slim`) with opencode installed
+via npm (`opencode-ai`). The `node` user (UID 1000) provided by the base image
+is reused rather than creating a separate user, keeping UID/GID consistent with
+standard Node.js container conventions.
+
+**Why not Alpine at all?** Alpine support was dropped entirely to simplify
+maintenance. A single base image avoids platform-specific cache conflicts,
+gcompat shim issues, and feature incompatibility. Users who need Alpine can use
+the upstream image directly.
 
 See upstream [#9246](https://github.com/anomalyco/opencode/issues/9246) and
-[#9560](https://github.com/anomalyco/opencode/pull/9560) for ongoing discussion
+[#9560](https://github.com/anomalyco/opencode/pull/9560) for upstream discussion
 of a Debian variant.
 
 ---
@@ -49,7 +68,7 @@ automatically. No registry credentials or tag management are needed.
 
 ---
 
-## 4. Non-root user (`opencode`, UID 1000)
+## 4. Non-root user (`node`, UID 1000)
 
 The upstream image runs as root, which gives the file browser write access to the
 entire container filesystem. Running as a non-root user:
@@ -57,6 +76,12 @@ entire container filesystem. Running as a non-root user:
 - Makes system directories outside `/code` read-only.
 - Prevents accidental writes to host-mounted paths that might have different UID
   mappings.
+
+The `node:22-slim` base image already provides a `node` user (UID 1000). We
+reuse this user instead of creating a separate `opencode` user because:
+- Avoids GID/UID collision with the host user's groups.
+- Matches Node.js container conventions (standard practice in the Node ecosystem).
+- Simplifies the Containerfile — no `useradd`/`groupadd` boilerplate needed.
 
 ---
 
@@ -181,11 +206,158 @@ inside the container.
 
 ---
 
+## 14. Devcontainer mode (`--feature-file`)
+
+When `--feature-file` is passed, the wrapper switches from a direct `podman run`
+to the **devcontainer CLI**, which layers community devcontainer features onto
+the base image at container startup.
+
+### Why two paths?
+
+- **Fast path** (no `--feature-file`): direct `podman run` is instant and has no
+  dependencies beyond Podman.
+- **Feature path**: the devcontainer CLI is the standard mechanism for installing
+  and caching devcontainer features. Re-implementing feature installation in bash
+  would be complex, fragile, and incompatible with the ecosystem.
+
+### `--build` flag behavior
+
+`--build` forces `podman build` to run instead of skipping it when the image
+already exists. However, Podman still caches unchanged Dockerfile layers, so
+you may see `--> Using cache` in the output even with `--build`.
+
+To force a truly cache-less rebuild (e.g., after changing the Containerfile or
+when debugging layer issues), remove the image first:
+
+```bash
+podman rmi localhost/opencode-container
+opencode-container --build tui
+```
+
+This deletes all layers and rebuilds from scratch.
+
+### TTY allocation in devcontainer TUI mode
+
+`devcontainer exec` inherits TTY allocation from its parent process
+automatically when stdin is a terminal. Key handling (arrow keys, Ctrl+C,
+etc.) works correctly through the inherited terminal.
+
+### Why `npx` for devcontainer CLI and jq
+
+Both the devcontainer CLI (`@devcontainers/cli`) and `jq` (`node-jq`) are
+invoked via `npx --yes`, which downloads them on first use and caches them for
+subsequent runs. This has two major advantages:
+
+1. **Minimal hard dependencies:** The only required system tools are Podman (or
+   Docker) and Node.js (for `npx`). Everything else is managed by npm/npx.
+2. **Deterministic behavior:** `node-jq` bundles a specific `jq` binary, so
+   feature file parsing and JSON merging behave identically across platforms
+   regardless of what system `jq` version (if any) the user has installed.
+
+If the devcontainer CLI is already installed globally, the wrapper uses the
+global version and skips the npx fallback. `jq` is always invoked via
+`npx node-jq` for consistency.
+
+### Why `containerEnv` values must be strings
+
+The devcontainer CLI v0.86.1 (and VS Code Dev Containers extension 0.396.0+)
+has a bug where non-string values in `containerEnv` (booleans, numbers) cause
+a `TypeError: [X].replace is not a function` during feature processing.
+This is a known upstream issue
+([microsoft/vscode-remote-release#10691](https://github.com/microsoft/vscode-remote-release/issues/10691)).
+
+The wrapper always generates string values (`"true"`, `"1"`) to avoid this.
+
+### Why empty `features: {}` is omitted
+
+Some devcontainer CLI versions fail when processing an empty features object
+during dependency resolution. The wrapper omits the `features` key entirely
+when no `--feature-file` arguments are provided, generating it only when
+features are actually present.
+
+### Why `--progress=plain` is injected
+
+BuildKit's animated progress renderer emits ANSI cursor-movement sequences
+that corrupt the terminal after `devcontainer up` completes. Injecting
+`build.options: ["--progress=plain"]` in the generated `devcontainer.json`
+switches to plain line-by-line output, matching
+[claudeman's approach](https://github.com/scottrigby/claudeman/pull/24).
+
+### Why stderr is streamed live during `devcontainer up`
+
+Feature installation (e.g., `common-utils:2`) can take a long time. Silently
+capturing all output leaves the user staring at a blank screen with no
+feedback. The wrapper captures stdout silently (for potential JSON parsing)
+while streaming stderr live to the terminal, so the user sees build progress
+in real time.
+
+### Why `ghcr.io/devcontainers/features/node:1` is incompatible
+
+Our base image is `node:22-slim` which already includes Node.js. Installing
+the `node` devcontainer feature on top causes a conflict: the feature installs
+Node via nvm, which expects `libatomic.so.1` — a library not present in the
+slim Debian base. This causes the feature build to fail with:
+
+```
+node: error while loading shared libraries: libatomic.so.1: cannot open shared object file
+```
+
+The wrapper does not block this feature (the user controls `--feature-file`),
+but test fixtures and documentation avoid it. This incompatibility is not
+documented in the upstream feature README.
+
+### Why Podman template uses `{{.ID}}` (uppercase)
+
+Podman's Go template system uses `{{.ID}}` (uppercase), while Docker uses
+`{{.Id}}` (mixed case). The wrapper uses uppercase to match Podman's API.
+This was discovered when `podman ps --format '{{.Id}}'` failed with:
+
+```
+Error: template: ps:1:13: executing "ps" at <.Id>: can't evaluate field Id in type containers.psReporter
+```
+
+### Why `devcontainer.json` is generated per-run
+
+The JSON is assembled by merging `.features` objects from all `--feature-file`
+arguments using `jq`, then layering opencode-specific mounts, labels, and
+environment variables on top. Because the set of features may change between
+runs, the JSON is regenerated each time into:
+
+```
+${XDG_CACHE_HOME}/opencode/<PROJECT_ID>/devcontainer.json
+```
+
+This location is disposable (cache, not config) but inspectable for debugging.
+
+### Why no persistent cache volumes in feature path
+
+Devcontainer features reinstall on every `devcontainer up` due to an upstream
+limitation (`RUN --mount=type=bind` prevents layer caching). Platform-specific
+package caches (npm, pip, Go modules) are tied to the base image architecture
+and would be invalid if the image changes. Persistent caches add complexity
+without meaningful speedup in this mode.
+
+**Future TODO:** If `--feature-file` JSONs could define `cacheEnv` entries (as
+claudeman profiles do), the wrapper could generate `mounts` + `remoteEnv` entries
+to persist caches per-project under `XDG_CACHE_HOME/opencode/<PROJECT_ID>/cache/`.
+This would speed up subsequent rebuilds without cross-project races.
+
+### Why Debian by default when using features
+
+Most devcontainer features assume `apt` and glibc paths. Defaulting to Debian
+removes the gcompat shim and aligns with ecosystem expectations. A single
+base image also simplifies cache management and avoids cross-platform cache
+invalidation.
+
+---
+
 ## Open questions / future work
 
-- **Dev Container variant:** Pre-installing project-specific dependencies (Node,
-  Python, etc.) inside the container instead of relying on host tooling.
 - **Build from source:** Once upstream adopts the non-git worktree fix, the
   `entrypoint.sh` `git init` workaround can be removed.
 - **Cross-platform `lsof`/`ss`:** Windows/WSL support would need a different port
   scan mechanism.
+- **`.env` / `--env` support:** No mechanism exists for passing arbitrary host
+  environment variables into the container.
+- **Custom mounts:** No mechanism exists for additional bind mounts (e.g.
+  `~/.aws`, `~/.kube/config`).

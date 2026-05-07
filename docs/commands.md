@@ -11,9 +11,14 @@ opencode-container [global-options] [subcommand] [subcommand-options]
 
 # DESCRIPTION
 
-A wrapper around `podman` that runs the opencode CLI in an Alpine-based
-container with glibc compatibility, non-root user (UID 1000), and
-per-project data isolation.
+A wrapper around `podman` (or the devcontainer CLI) that runs the opencode
+CLI in a Debian-based (`node:22-slim`) container with per-project data
+isolation.
+
+When `--feature-file` is given, the wrapper uses the devcontainer CLI to layer
+devcontainer features (Node, Python, Go, etc.) on top of the base image.
+Without `--feature-file`, the container starts directly via Podman for a fast
+path.
 
 The container image builds automatically on first run. No registry or
 Docker daemon is required — Podman handles everything rootlessly.
@@ -21,8 +26,14 @@ Docker daemon is required — Podman handles everything rootlessly.
 # GLOBAL OPTIONS
 
 `-b`, `--build`
-: Force rebuild the container image before running. This also pulls the
-latest upstream base image (`ghcr.io/anomalyco/opencode:latest`).
+: Force rebuild the container image before running.
+
+`--feature-file` *PATH*
+: Merge the `.features` object from a JSON file into the generated
+`devcontainer.json`. Repeatable; later files override on key collision.
+Requires `npx` (which will auto-install `@devcontainers/cli` and
+`node-jq` on first use). When this flag is used, the wrapper uses the
+devcontainer CLI instead of direct `podman run`.
 
 `--no-git-root`
 : Mount the current working directory instead of auto-detecting and
@@ -75,6 +86,10 @@ stdout.
 : Base directories for per-project isolation. Defaults are
 `~/.local/share/opencode/` and `~/.config/opencode/`.
 
+`XDG_CACHE_HOME`
+: Base directory for generated devcontainer configs when using `--feature-file`.
+Defaults to `~/.cache/opencode/`.
+
 # FILES
 
 ```
@@ -112,6 +127,21 @@ Mount the current subdirectory (not the git root) and do not auto-init git:
 ```bash
 opencode-container --no-git-root --no-git-init web --port 5000
 ```
+
+Run with devcontainer features from a JSON file:
+
+```bash
+opencode-container --feature-file ./features.json tui
+```
+
+Run web mode with features on a custom port:
+
+```bash
+opencode-container --feature-file ./features.json web --port 5000
+```
+
+See `tests/testdata/README.md` for ready-made feature files and a full manual
+E2E test checklist.
 
 List all projects that have isolated data:
 

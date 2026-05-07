@@ -6,7 +6,7 @@ see [`patches/readme.md`](../patches/readme.md) for how to apply them upstream.
 
 ---
 
-## glibc / musl on Alpine
+## glibc / musl incompatibility (resolved by Debian base)
 
 **Symptom:** Native `.so` libraries loaded via Bun FFI fail with glibc symbol
 errors:
@@ -18,14 +18,13 @@ Error relocating ...so: gnu_get_libc_version: symbol not found
 **Root cause:** The upstream image is Alpine-based (musl libc). Native libraries
 compiled against glibc cannot run on musl without a compatibility layer.
 
-**Workaround in container:** The image layers `gcompat` and sets
-`LD_PRELOAD=/lib/libgcompat.so.0` at runtime. This keeps us close to upstream
-rather than maintaining a forked Debian image.
+**Resolution:** The base image is Debian (`node:22-slim`), which uses glibc
+natively. Devcontainer features also require glibc.
 
 **Upstream:** [#9246](https://github.com/anomalyco/opencode/issues/9246) ·
 [#9560](https://github.com/anomalyco/opencode/pull/9560)
 
-**Rationale:** [`docs/design.md`](design.md#2-alpine--gcompat-instead-of-debian)
+**Rationale:** [`docs/design.md`](design.md#2-debian-base-image-node22-slim)
 
 ---
 
@@ -53,6 +52,47 @@ are not git repositories.
 which is wrong after the non-git fallback patch.
 
 **Patch:** [`patches/0002-tui-plugin-runtime-fix-vcs-inference-for-non-git-dirs.patch`](../patches/0002-tui-plugin-runtime-fix-vcs-inference-for-non-git-dirs.patch)
+
+---
+
+## `entrypoint.sh` shebang must be `#!/bin/bash`
+
+**Symptom:** The container fails to start with syntax errors in `entrypoint.sh`:
+
+```
+/entrypoint.sh: 12: [[: not found
+```
+
+**Root cause:** `entrypoint.sh` was changed from `#!/bin/sh` to `#!/bin/bash`
+because it uses bash-specific syntax (`[[ ]]`, `|| true`). The Debian base image
+has `/bin/bash`, but the shebang must match.
+
+**Fix:** Ensure `entrypoint.sh` starts with `#!/bin/bash`.
+
+---
+
+## Devcontainer `node` feature conflicts with `node:22-slim` base image
+
+**Symptom:** When using `--feature-file` with `ghcr.io/devcontainers/features/node:1`,
+the devcontainer CLI fails with:
+
+```
+node: error while loading shared libraries: libatomic.so.1: cannot open shared object file: No such file or directory
+ERROR: Feature "Node.js (via nvm), yarn and pnpm." ... failed to install!
+```
+
+**Root cause:** The `node` feature installs Node.js via nvm on top of the base
+image. Our base image is `node:22-slim`, which **already includes Node.js**.
+Installing a second Node.js via nvm causes library conflicts — the nvm-installed
+version expects `libatomic.so.1` which is not present in the slim Debian base.
+
+**Workaround:** Do **not** use the `node` devcontainer feature with this base
+image. Use features that add tools the base image *doesn't* already have,
+e.g. `common-utils:2`, `go:1`, or `python:1`.
+
+**Note:** This incompatibility is not documented in the upstream
+[devcontainers/features node README](https://github.com/devcontainers/features/tree/main/src/node).
+The feature assumes a clean Debian/Ubuntu base without Node.js pre-installed.
 
 ---
 

@@ -21,13 +21,21 @@ SYNOPSIS
     opencode-container [global-options] [subcommand] [subcommand-options]
 
 DESCRIPTION
-    A wrapper around podman that runs the opencode CLI in an Alpine-based
-    container with glibc compatibility, non-root user (UID 1000), and
-    per-project data isolation. The container image builds automatically
-    on first run.
+    A wrapper around podman (or the devcontainer CLI) that runs the opencode
+    CLI in a Debian-based (node:22-slim) container with per-project data
+    isolation.
+
+    When --feature-file is given, the wrapper uses the devcontainer CLI to
+    layer devcontainer features (Node, Python, Go, etc.) on top of the base
+    image. Without --feature-file, the container starts directly via Podman
+    for a fast path.
 
 GLOBAL OPTIONS
     -b, --build          Force rebuild the container image before running
+    --feature-file PATH  Merge .features from a JSON file into the generated
+                         devcontainer.json. Repeatable; later files win on
+                         key collision. Requires npx (auto-installs
+                         @devcontainers/cli and node-jq on first use).
     --no-git-root        Mount the current working directory instead of
                          auto-detecting the git repository root
     --no-git-init        Do not auto-initialise an empty git repo in
@@ -52,9 +60,10 @@ COMMAND OPTIONS
 EXAMPLES
     opencode-container                      # TUI mode
     opencode-container web                  # Web mode
-    opencode-container web --port 5000      # Web mode on port 5000
-    opencode-container -b web -p 5000       # Rebuild, then web on 5000
+    opencode-container web --port 5000    # Web mode on port 5000
+    opencode-container -b web -p 5000     # Rebuild, then web on 5000
     opencode-container --no-git-root        # TUI, mount current dir
+    opencode-container --feature-file ./features.json web
     opencode-container projects             # List isolated projects
     opencode-container completion --bash    # Bash completion script
     opencode-container completion --zsh     # Zsh completion script
@@ -73,13 +82,14 @@ resolve_path() {
 
 build_image() {
   local container_dir="$1"
-  if [[ ! -f "$container_dir/Containerfile" ]]; then
-    echo "Image $IMAGE not found and no Containerfile in $container_dir" >&2
-    echo "Please run: podman build -t $IMAGE $container_dir" >&2
+  local dockerfile="${container_dir}/Containerfile.debian"
+  if [[ ! -f "$dockerfile" ]]; then
+    echo "Image ${IMAGE} not found and no ${dockerfile}" >&2
+    echo "Please run: podman build -t ${IMAGE} -f ${dockerfile} ${container_dir}" >&2
     exit 1
   fi
-  echo "Building $IMAGE ..." >&2
-  podman build -t "$IMAGE" "$container_dir" >&2
+  echo "Building ${IMAGE} ..." >&2
+  podman build -t "${IMAGE}" -f "${dockerfile}" "${container_dir}" >&2
 }
 
 find_free_port() {
@@ -118,12 +128,22 @@ done
 FORCE_BUILD=false
 NO_GIT_ROOT=false
 NO_GIT_INIT=false
+FEATURE_FILES=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --build|-b)
       FORCE_BUILD=true
       shift
+      ;;
+    --feature-file)
+      if [[ -n "${2:-}" ]] && [[ "${2:-}" != -* ]]; then
+        FEATURE_FILES+=("$2")
+        shift 2
+      else
+        echo "Error: --feature-file requires an argument" >&2
+        exit 1
+      fi
       ;;
     --no-git-root)
       NO_GIT_ROOT=true
@@ -294,7 +314,7 @@ EOF
 _opencode_container() {
   local cur="${COMP_WORDS[COMP_CWORD]}"
   local prev="${COMP_WORDS[COMP_CWORD-1]}"
-  local global_opts="-b --build --no-git-root --no-git-init -h --help"
+  local global_opts="-b --build --feature-file --no-git-root --no-git-init -h --help"
   local web_opts="-p --port --no-open"
   local subcommands="completion tui web projects"
 
@@ -305,7 +325,7 @@ _opencode_container() {
         subcommand_seen=true
         break
         ;;
-      --build|-b|--no-git-root|--no-git-init|--help|-h)
+      --build|-b|--no-git-root|--no-git-init|--help|-h|--feature-file)
         continue
         ;;
       --port|-p|--bash|--zsh)
@@ -358,6 +378,7 @@ _opencode_container() {
   opts=(
     '-b:Force rebuild the container image'
     '--build:Force rebuild the container image'
+    '--feature-file:Path to a JSON file with devcontainer features to merge'
     '--no-git-root:Mount current directory instead of git root'
     '--no-git-init:Skip auto git init in non-git dirs'
     '-h:Print usage and exit'
@@ -377,6 +398,7 @@ _opencode_container() {
     case "${words[i]}" in
       --) break ;;
       -b|--build|--no-git-root|--no-git-init|-h|--help) continue ;;
+      --feature-file) (( i++ )); continue ;;
       -p|--port) (( i++ )); continue ;;
       --bash|--zsh) continue ;;
       completion|tui|web|projects) cmd="${words[i]}"; break ;;
@@ -424,11 +446,6 @@ done
 SCRIPT_DIR=$(cd "$(dirname "$SCRIPT_PATH")" && pwd)
 CONTAINER_DIR="$(cd "$SCRIPT_DIR/../container" && pwd)"
 
-# Auto-build the image on first run, or when --build is passed.
-if [[ "$FORCE_BUILD" == true ]] || ! podman image exists "$IMAGE" >/dev/null 2>&1; then
-  build_image "$CONTAINER_DIR"
-fi
-
 # Resolve symlinks in a path (macOS: /var → /private/var, etc.).
 PWD_RESOLVED=$(resolve_path "$PWD")
 
@@ -456,21 +473,251 @@ fi
 
 mkdir -p "$DATA_DIR" "$CONFIG_DIR"
 
+# Hint if the project has its own .devcontainer directory
+if [[ -f "$CODE_DIR/.devcontainer/devcontainer.json" ]]; then
+  echo "Hint: Found .devcontainer/devcontainer.json — use --feature-file .devcontainer/devcontainer.json to include its features" >&2
+fi
+
+# ---------------------------------------------------------------------------
+# Path B: Devcontainer mode (when --feature-file is given)
+# ---------------------------------------------------------------------------
+if [[ ${#FEATURE_FILES[@]} -gt 0 ]]; then
+  # Requirements check: resolve devcontainer CLI (global or via npx)
+  DEVCONTAINER_CMD=()
+  if command -v devcontainer >/dev/null 2>&1; then
+    DEVCONTAINER_CMD=(devcontainer)
+  elif command -v npx >/dev/null 2>&1 && npx --yes @devcontainers/cli --version >/dev/null 2>&1; then
+    DEVCONTAINER_CMD=(npx --yes @devcontainers/cli)
+  fi
+  if [[ ${#DEVCONTAINER_CMD[@]} -eq 0 ]]; then
+    echo "Error: devcontainer CLI is required for --feature-file." >&2
+    echo "Install one of:" >&2
+    echo "  npm install -g npx                     (recommended — auto-installs on first use)" >&2
+    echo "  npm install -g @devcontainers/cli    (global install)" >&2
+    exit 1
+  fi
+
+  # Requirements check: jq via npx node-jq (deterministic, cross-platform)
+  if ! command -v npx >/dev/null 2>&1; then
+    echo "Error: npx is required for --feature-file." >&2
+    echo "Install with: npm install -g npx" >&2
+    exit 1
+  fi
+  JQ_CMD=(npx --yes node-jq)
+
+  # Build base image if needed (skip if podman isn't available)
+  if [[ "$FORCE_BUILD" == true ]] || ( command -v podman >/dev/null 2>&1 && ! podman image exists "$IMAGE" >/dev/null 2>&1 ); then
+    build_image "$CONTAINER_DIR"
+  fi
+
+  # Prevent duplicate containers for the same project (skip if podman unavailable)
+  if command -v podman >/dev/null 2>&1; then
+    RUNNING_NAME=$(podman ps --filter "label=${LABEL_KEY}=${PROJECT_ID}" --format '{{.Names}}' | head -n1)
+    if [[ -n "$RUNNING_NAME" ]]; then
+      echo "opencode is already running for this project: ${RUNNING_NAME}" >&2
+      exit 1
+    fi
+  fi
+
+  # Merge features from all --feature-file args.
+  # TODO: Consider also merging other devcontainer.json keys (e.g. cacheEnv
+  # for persistent dependency caches, or extraDomains for firewall rules)
+  # from feature files. Each tool has its own env var conventions
+  # (npm_config_cache, PIP_CACHE_DIR, GOMODCACHE, etc.).
+  MERGED_FEATURES='{}'
+  for f in "${FEATURE_FILES[@]}"; do
+    if [[ ! -f "$f" ]]; then
+      echo "Error: feature file not found: $f" >&2
+      exit 1
+    fi
+    # Validate it's valid JSON with a .features key (or at least valid JSON)
+    if ! "${JQ_CMD[@]}" empty "$f" 2>/dev/null; then
+      echo "Error: invalid JSON in feature file: $f" >&2
+      exit 1
+    fi
+    # Merge .features if present, otherwise skip
+    local_file_features=$("${JQ_CMD[@]}" -r '.features // {}' "$f")
+    MERGED_FEATURES=$(echo "$MERGED_FEATURES" "$local_file_features" | "${JQ_CMD[@]}" -s '.[0] * .[1]')
+  done
+
+  # Prepare cache directory for generated devcontainer.json
+  CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/opencode/$PROJECT_ID"
+  mkdir -p "$CACHE_DIR"
+  DEVCONTAINER_JSON="$CACHE_DIR/devcontainer.json"
+
+  # Build forwardPorts and port bindings for web mode
+  FORWARD_PORTS='[]'
+  EXTRA_RUNARGS='[]'
+  if [[ "$SUBCOMMAND" == "web" ]]; then
+    PORT=$(find_free_port "$WEB_PORT")
+    if [[ "$PORT" != "$WEB_PORT" ]]; then
+      echo "Port ${WEB_PORT} in use, using port ${PORT} instead" >&2
+    fi
+    FORWARD_PORTS="[$PORT]"
+    EXTRA_RUNARGS="[\"-p=${PORT}:${PORT}\"]"
+  fi
+
+  # Build environment map (values MUST be strings per devcontainer spec)
+  if [[ "$NO_GIT_INIT" == true ]]; then
+    CONTAINER_ENV='{"OPENCODE_DISABLE_DEFAULT_PLUGINS":"true","OPENCODE_NO_GIT_INIT":"1"}'
+  else
+    CONTAINER_ENV='{"OPENCODE_DISABLE_DEFAULT_PLUGINS":"true"}'
+  fi
+
+  # Generate devcontainer.json via jq.  All env values are strings (spec
+  # requirement); features key is omitted when empty to avoid CLI bugs.
+  # build.options "--progress=plain" suppresses BuildKit TUI ANSI cursor
+  # sequences that corrupt the terminal after devcontainer up completes.
+  "${JQ_CMD[@]}" -n \
+    --arg image "$IMAGE" \
+    --argjson features "$MERGED_FEATURES" \
+    --argjson forwardPorts "$FORWARD_PORTS" \
+    --argjson extraRunArgs "$EXTRA_RUNARGS" \
+    --arg label "${LABEL_KEY}=${PROJECT_ID}" \
+    --arg dataDir "$DATA_DIR" \
+    --arg configDir "$CONFIG_DIR" \
+    --arg codeDir "$CODE_DIR" \
+    --argjson containerEnv "$CONTAINER_ENV" \
+    '{
+      name: "opencode-container",
+      image: $image,
+      build: {
+        options: ["--progress=plain"]
+      },
+      forwardPorts: $forwardPorts,
+      containerEnv: $containerEnv,
+      mounts: [
+        {source: $dataDir, target: "/home/node/.local/share/opencode", type: "bind"},
+        {source: $configDir, target: "/home/node/.config/opencode", type: "bind"},
+        {source: $codeDir, target: "/code", type: "bind"}
+      ],
+      runArgs: (
+        ["--label=" + $label] +
+        ["--init"] +
+        $extraRunArgs
+      ),
+      overrideCommand: false,
+      remoteUser: "node"
+    } + (if ($features | keys | length) > 0 then {features: $features} else {} end)' > "$DEVCONTAINER_JSON"
+
+  echo "Generated devcontainer config: $DEVCONTAINER_JSON" >&2
+
+  # Start the devcontainer. Capture stdout silently (JSON result) while
+  # streaming stderr live so the user sees feature build progress.  This matches
+  # claudeman's approach — no silent waiting.
+  UP_STDOUT="$(mktemp)"
+  echo "Starting devcontainer... (features may take time to build)" >&2
+  if ! "${DEVCONTAINER_CMD[@]}" up \
+    --docker-path podman \
+    --workspace-folder "$CODE_DIR" \
+    --config "$DEVCONTAINER_JSON" \
+    --remove-existing-container \
+    >"$UP_STDOUT"; then
+    echo "Error: devcontainer up failed" >&2
+    rm -f "$UP_STDOUT"
+    exit 1
+  fi
+  rm -f "$UP_STDOUT"
+
+  # Find container ID by label for cleanup
+  CONTAINER_ID=$(podman ps --filter "label=${LABEL_KEY}=${PROJECT_ID}" --format '{{.ID}}' | head -n1)
+
+  cleanup_devcontainer() {
+    trap - EXIT INT TERM
+    echo ""
+    echo "Stopping opencode container..." >&2
+    local cid
+    cid=$(podman ps --filter "label=${LABEL_KEY}=${PROJECT_ID}" --format '{{.ID}}' | head -n1)
+    if [[ -n "$cid" ]]; then
+      "${DEVCONTAINER_CMD[@]}" stop \
+        --docker-path podman \
+        --workspace-folder "$CODE_DIR" \
+        --config "$DEVCONTAINER_JSON" \
+        >/dev/null 2>&1 || true
+      podman rm -f "$cid" >/dev/null 2>&1 || true
+    fi
+  }
+  trap cleanup_devcontainer EXIT INT TERM
+
+  if [[ "$SUBCOMMAND" == "web" ]]; then
+    CODE_B64=$(printf '%s' '/code' | base64 | tr -d '\n' | tr '+/' '-_' | tr -d '=')
+    URL="http://localhost:${PORT}/${CODE_B64}"
+    echo "URL: ${URL}"
+
+    # Wait for HTTP port
+    echo -n "Waiting for server to start" >&2
+    http_ready=false
+    for _ in $(seq 1 30); do
+      if port_is_open localhost "$PORT"; then
+        http_ready=true
+        break
+      fi
+      echo -n "." >&2
+      sleep 1
+    done
+    echo "" >&2
+
+    if [[ "$http_ready" == false ]]; then
+      echo "Warning: server did not respond on port ${PORT}" >&2
+    fi
+
+    if [[ "$http_ready" == true ]] && [[ "$WEB_NO_OPEN" == false ]]; then
+      if command -v open >/dev/null 2>&1; then
+        open "$URL"
+      elif command -v xdg-open >/dev/null 2>&1; then
+        xdg-open "$URL"
+      fi
+    fi
+
+    # Keep the container running; devcontainer exec web mode runs in foreground.
+    # Ctrl+C kills the exec process; the EXIT/INT trap cleans up the container.
+    "${DEVCONTAINER_CMD[@]}" exec \
+      --docker-path podman \
+      --workspace-folder "$CODE_DIR" \
+      --config "$DEVCONTAINER_JSON" \
+      opencode web --hostname 0.0.0.0 --port "$PORT" \
+      "${WEB_EXTRA_ARGS[@]+"${WEB_EXTRA_ARGS[@]}"}" || true
+  else
+    # TUI mode -- devcontainer exec inherits TTY from parent process
+    # automatically; do not pass --tty (not a valid exec flag).
+    "${DEVCONTAINER_CMD[@]}" exec \
+      --docker-path podman \
+      --workspace-folder "$CODE_DIR" \
+      --config "$DEVCONTAINER_JSON" \
+      opencode \
+      "${TUI_EXTRA_ARGS[@]+"${TUI_EXTRA_ARGS[@]}"}"
+  fi
+
+  exit 0
+fi
+
+# ---------------------------------------------------------------------------
+# Path A: Fast path (direct podman run — no devcontainer features)
+# ---------------------------------------------------------------------------
+
+# Auto-build the image on first run, or when --build is passed.
+if [[ "$FORCE_BUILD" == true ]] || ! podman image exists "$IMAGE" >/dev/null 2>&1; then
+  build_image "$CONTAINER_DIR"
+fi
+
 # Prevent duplicate containers for the same project using the full label value
 RUNNING_NAME=$(podman ps --filter "label=${LABEL_KEY}=${PROJECT_ID}" --format '{{.Names}}' | head -n1)
 if [[ -n "$RUNNING_NAME" ]]; then
   echo "opencode is already running for this project: ${RUNNING_NAME}" >&2
-  echo "Attach with: podman attach ${RUNNING_NAME}" >&2
   exit 1
 fi
 
 # Common podman args (no --name — let Podman auto-generate to avoid collisions)
 PODMAN_ARGS=(
   --label "${LABEL_KEY}=${PROJECT_ID}"
-  -v "${DATA_DIR}:/home/opencode/.local/share/opencode:Z"
-  -v "${CONFIG_DIR}:/home/opencode/.config/opencode:Z"
+  -v "${DATA_DIR}:/home/node/.local/share/opencode:Z"
+  -v "${CONFIG_DIR}:/home/node/.config/opencode:Z"
   -v "${CODE_DIR}:/code:Z"
   -e OPENCODE_DISABLE_DEFAULT_PLUGINS=true
+  -e XDG_DATA_HOME=/home/node/.local/share
+  -e XDG_CONFIG_HOME=/home/node/.config
+  -e XDG_CACHE_HOME=/home/node/.cache
+  -e XDG_STATE_HOME=/home/node/.local/state
 )
 
 if [[ "$NO_GIT_INIT" == true ]]; then
