@@ -617,7 +617,7 @@ if [[ ${#FEATURE_FILES[@]} -gt 0 ]]; then
       --workspace-folder "$CODE_DIR" \
       --config "$DEVCONTAINER_JSON" \
       opencode web --hostname 0.0.0.0 --port "$PORT" \
-      "${OPENCODE_EXTRA_ARGS[@]+"${OPENCODE_EXTRA_ARGS[@]}"]}" || true
+      "${OPENCODE_EXTRA_ARGS[@]+"${OPENCODE_EXTRA_ARGS[@]}"}" || true
   else
     # TUI mode -- devcontainer exec inherits TTY from parent process
     # automatically; do not pass --tty (not a valid exec flag).
@@ -626,7 +626,7 @@ if [[ ${#FEATURE_FILES[@]} -gt 0 ]]; then
       --workspace-folder "$CODE_DIR" \
       --config "$DEVCONTAINER_JSON" \
       opencode \
-      "${OPENCODE_EXTRA_ARGS[@]+"${OPENCODE_EXTRA_ARGS[@]}"]}"
+      "${OPENCODE_EXTRA_ARGS[@]+"${OPENCODE_EXTRA_ARGS[@]}"}"
   fi
 
   exit 0
@@ -688,12 +688,12 @@ if [[ "$WEB_MODE" == true ]]; then
   fi
 
   # Start container in background
-  podman run -i --rm --init \
+    podman run -i --rm --init \
     "${PODMAN_ARGS[@]}" \
     -p "${PORT}:${PORT}" \
     "${IMAGE}" \
     web --hostname 0.0.0.0 --port "${PORT}" \
-    "${OPENCODE_EXTRA_ARGS[@]+"${OPENCODE_EXTRA_ARGS[@]}"]}" &
+    "${OPENCODE_EXTRA_ARGS[@]+"${OPENCODE_EXTRA_ARGS[@]}"}" &
   CONTAINER_PID=$!
 
   # Wait briefly for Podman to register the container, then look up its name
@@ -767,5 +767,5 @@ else
   podman run -it --rm \
     "${PODMAN_ARGS[@]}" \
     "${IMAGE}" \
-    "${OPENCODE_EXTRA_ARGS[@]+"${OPENCODE_EXTRA_ARGS[@]}"]}"
+    "${OPENCODE_EXTRA_ARGS[@]+"${OPENCODE_EXTRA_ARGS[@]}"}"
 fi

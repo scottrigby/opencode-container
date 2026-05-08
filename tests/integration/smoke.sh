@@ -77,6 +77,9 @@ run_test "-e/--env reaches podman fast path" "podman: command not found" "$OC" -
 run_test "--env reaches podman fast path" "podman: command not found" "$OC" --env FOO=bar
 run_test "--local-env reaches podman fast path" "podman: command not found" "$OC" --local-env HOME
 
+# --- Argument passthrough (-- delimiter) ---
+run_test "-- passes args to opencode" "podman: command not found" "$OC" -- --some-opencode-flag
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 exit $((FAIL > 0 ? 1 : 0))
