@@ -122,10 +122,24 @@ port_is_open() {
   timeout 2 bash -c "exec 3<>/dev/tcp/${host}/${port}" 2>/dev/null
 }
 
+# Returns 0 if the opencode web extra args suggest a server will start
+will_start_web_server() {
+  local arg
+  for arg in "$@"; do
+    case "$arg" in
+      --version|-v|--help|-h|help) return 1 ;;
+    esac
+  done
+  return 0
+}
+
 # ---------------------------------------------------------------------------
-# Phase 1: intercept --help / -h anywhere in the argument list
+# Phase 1: intercept --help / -h anywhere before the -- delimiter
 # ---------------------------------------------------------------------------
 for arg in "$@"; do
+  if [[ "$arg" == "--" ]]; then
+    break
+  fi
   if [[ "$arg" == "--help" ]] || [[ "$arg" == "-h" ]]; then
     usage
     exit 0
@@ -583,30 +597,33 @@ if [[ ${#FEATURE_FILES[@]} -gt 0 ]]; then
   if [[ "$WEB_MODE" == true ]]; then
     CODE_B64=$(printf '%s' '/code' | base64 | tr -d '\n' | tr '+/' '-_' | tr -d '=')
     URL="http://localhost:${PORT}/${CODE_B64}"
-    echo "URL: ${URL}"
 
-    # Wait for HTTP port
-    echo -n "Waiting for server to start" >&2
-    http_ready=false
-    for _ in $(seq 1 30); do
-      if port_is_open localhost "$PORT"; then
-        http_ready=true
-        break
+    if will_start_web_server "${OPENCODE_EXTRA_ARGS[@]+"${OPENCODE_EXTRA_ARGS[@]}"}"; then
+      echo "URL: ${URL}"
+
+      # Wait for HTTP port
+      echo -n "Waiting for server to start" >&2
+      http_ready=false
+      for _ in $(seq 1 30); do
+        if port_is_open localhost "$PORT"; then
+          http_ready=true
+          break
+        fi
+        echo -n "." >&2
+        sleep 1
+      done
+      echo "" >&2
+
+      if [[ "$http_ready" == false ]]; then
+        echo "Warning: server did not respond on port ${PORT}" >&2
       fi
-      echo -n "." >&2
-      sleep 1
-    done
-    echo "" >&2
 
-    if [[ "$http_ready" == false ]]; then
-      echo "Warning: server did not respond on port ${PORT}" >&2
-    fi
-
-    if [[ "$http_ready" == true ]] && [[ "$WEB_NO_OPEN" == false ]]; then
-      if command -v open >/dev/null 2>&1; then
-        open "$URL"
-      elif command -v xdg-open >/dev/null 2>&1; then
-        xdg-open "$URL"
+      if [[ "$http_ready" == true ]] && [[ "$WEB_NO_OPEN" == false ]]; then
+        if command -v open >/dev/null 2>&1; then
+          open "$URL"
+        elif command -v xdg-open >/dev/null 2>&1; then
+          xdg-open "$URL"
+        fi
       fi
     fi
 
@@ -716,31 +733,33 @@ if [[ "$WEB_MODE" == true ]]; then
 
   echo "opencode web container: ${CONTAINER_NAME}"
 
-  # Wait for the HTTP port to be responsive before opening browser
-  echo -n "Waiting for server to start" >&2
-  http_ready=false
-  for _ in $(seq 1 30); do
-    if port_is_open localhost "$PORT"; then
-      http_ready=true
-      break
+  if will_start_web_server "${OPENCODE_EXTRA_ARGS[@]+"${OPENCODE_EXTRA_ARGS[@]}"}"; then
+    # Wait for the HTTP port to be responsive before opening browser
+    echo -n "Waiting for server to start" >&2
+    http_ready=false
+    for _ in $(seq 1 30); do
+      if port_is_open localhost "$PORT"; then
+        http_ready=true
+        break
+      fi
+      echo -n "." >&2
+      sleep 1
+    done
+    echo "" >&2
+
+    if [[ "$http_ready" == false ]]; then
+      echo "Warning: server did not respond on port ${PORT}" >&2
     fi
-    echo -n "." >&2
-    sleep 1
-  done
-  echo "" >&2
 
-  if [[ "$http_ready" == false ]]; then
-    echo "Warning: server did not respond on port ${PORT}" >&2
-  fi
+    echo "URL: ${URL}"
 
-  echo "URL: ${URL}"
-
-  # Auto-open browser only if port is ready and --no-open was not passed
-  if [[ "$http_ready" == true ]] && [[ "$WEB_NO_OPEN" == false ]]; then
-    if command -v open >/dev/null 2>&1; then
-      open "$URL"
-    elif command -v xdg-open >/dev/null 2>&1; then
-      xdg-open "$URL"
+    # Auto-open browser only if port is ready and --no-open was not passed
+    if [[ "$http_ready" == true ]] && [[ "$WEB_NO_OPEN" == false ]]; then
+      if command -v open >/dev/null 2>&1; then
+        open "$URL"
+      elif command -v xdg-open >/dev/null 2>&1; then
+        xdg-open "$URL"
+      fi
     fi
   fi
 

@@ -79,6 +79,8 @@ run_test "--local-env reaches podman fast path" "podman: command not found" "$OC
 
 # --- Argument passthrough (-- delimiter) ---
 run_test "-- passes args to opencode" "podman: command not found" "$OC" -- --some-opencode-flag
+# --help after -- should NOT trigger wrapper help; it should pass through
+run_test "--help after -- passes through" "podman: command not found" "$OC" -- --help
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
