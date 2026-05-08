@@ -53,6 +53,42 @@ filtering logic.
 
 **Reference:** [VS Code Remote - Environment Variables](https://code.visualstudio.com/remote/advancedcontainers/environment-variables)
 
+## CLI Spec and Completion Generation
+
+### 5. Formal CLI Specification
+
+**Status:** `cli-spec.json` created as documentation. Generator not yet implemented.
+
+**Idea:** Represent the CLI structure (commands, options, types, descriptions) in a
+machine-readable format (JSON/YAML) and use it to auto-generate shell completion
+scripts, man pages, and help text.
+
+**Why:** Currently the CLI structure is defined ad-hoc in `bin/opencode-container` with
+hand-written completion scripts for bash and zsh. This leads to:
+- Completions getting out of sync with the actual parser
+- Bugs in one shell's completion that don't exist in the other
+- No single source of truth for the CLI structure
+
+**Approaches evaluated:**
+
+1. **Hand-written generator script** — Parse `cli-spec.json` with `jq`, emit bash/zsh
+   completion scripts. Doable but error-prone (as demonstrated by initial attempt).
+   Would need proper testing.
+
+2. **`argbash`** — Bash script generator that takes annotated templates and produces
+   scripts with proper `getopts` parsing + completions. Would require rewriting
+   `bin/opencode-container` as an argbash template. Adds build step and dependency.
+
+3. **Switch to language with CLI framework** — Rewrite wrapper in Go (cobra), Rust
+   (clap), or Python (click) which all auto-generate completions from struct/decorator
+   definitions. Major architectural change, not justified for a thin wrapper.
+
+**Recommendation:** For now, keep hand-written completions but use `cli-spec.json` as
+the reference when adding new flags. In the future, evaluate `argbash` or a custom
+`jq`-based generator that produces both bash and zsh scripts from the spec.
+
+**Related:** See §2 (Zsh Completion Issues) for immediate bugs to fix.
+
 ## Ctrl+C / Ctrl+D Confirmation Prompt
 
 ### 4. Session Close Confirmation

@@ -1,0 +1,87 @@
+{
+  "name": "opencode-container",
+  "version": "0.1.0",
+  "description": "Run opencode in a Podman container with per-project isolation",
+  "global_options": [
+    {
+      "name": "--build",
+      "short": "-b",
+      "type": "boolean",
+      "description": "Force rebuild the container image before running"
+    },
+    {
+      "name": "--feature-file",
+      "type": "path",
+      "repeatable": true,
+      "description": "Merge .features from a JSON file into the generated devcontainer.json. Later files win on key collision."
+    },
+    {
+      "name": "--env-file",
+      "type": "path",
+      "repeatable": true,
+      "description": "Pass an environment file to the container. Auto-detects .env in project root."
+    },
+    {
+      "name": "--no-git-root",
+      "type": "boolean",
+      "description": "Mount the current working directory instead of auto-detecting the git repository root"
+    },
+    {
+      "name": "--no-git-init",
+      "type": "boolean",
+      "description": "Do not auto-initialise an empty git repo in non-git directories"
+    },
+    {
+      "name": "--help",
+      "short": "-h",
+      "type": "boolean",
+      "description": "Print usage and exit"
+    }
+  ],
+  "subcommands": [
+    {
+      "name": "tui",
+      "description": "Terminal UI mode (default when no subcommand is given)",
+      "options": []
+    },
+    {
+      "name": "web",
+      "description": "Web UI mode",
+      "options": [
+        {
+          "name": "--port",
+          "short": "-p",
+          "type": "number",
+          "default": 4096,
+          "description": "Port to listen on"
+        },
+        {
+          "name": "--no-open",
+          "type": "boolean",
+          "description": "Do not auto-open the browser"
+        }
+      ]
+    },
+    {
+      "name": "completion",
+      "description": "Generate shell completion scripts",
+      "options": [
+        {
+          "name": "--bash",
+          "type": "boolean",
+          "description": "Output bash completion script"
+        },
+        {
+          "name": "--zsh",
+          "type": "boolean",
+          "description": "Output zsh completion script"
+        }
+      ]
+    },
+    {
+      "name": "projects",
+      "description": "List all projects with isolated session data",
+      "options": []
+    }
+  ]
+}
