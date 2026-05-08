@@ -7,7 +7,9 @@ _opencode_container() {
   opts=(
     '-b' '--build'
     '-f' '--feature-file'
-    '-e' '--env-file'
+    '--env-file'
+    '-e' '--env'
+    '--local-env'
     '-w' '--web'
     '-p' '--port'
     '--no-open'
@@ -32,7 +34,7 @@ _opencode_container() {
     case "${words[i]}" in
       --) break ;;
       -b|--build|--no-git-root|--no-git-init|-h|--help) continue ;;
-      -f|--feature-file|-e|--env-file) (( i++ )); continue ;;
+      -f|--feature-file|--env-file|-e|--env|--local-env) (( i++ )); continue ;;
       -w|--web) web_seen=true; continue ;;
       -p|--port) (( i++ )); continue ;;
       --no-open|--bash|--zsh) continue ;;

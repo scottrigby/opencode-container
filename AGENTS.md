@@ -52,10 +52,10 @@ verify correct project scoping.
 
 Full reference: [docs/commands.md](docs/commands.md) · `opencode-container --help`
 
-Quick summary: `[global-options] [subcommand] [subcommand-options]`
-- Global: `-b/--build`, `--feature-file PATH`, `--env-file PATH`, `--no-git-root`, `--no-git-init`, `-h/--help`
-- Subcommands: `tui` (default), `web`, `completion`, `projects`
-- `web`: `-p/--port PORT`, `--no-open`
+Quick summary: `[options] [--] [opencode-args...]` or `[options] <command> [command-options]`
+- Options: `-b/--build`, `-f/--feature-file PATH`, `--env-file PATH`, `-e/--env VAR=value`, `--local-env VAR`, `-w/--web`, `-p/--port PORT`, `--no-open`, `--no-git-root`, `--no-git-init`, `-h/--help`
+- Commands: `projects`, `completion`
+- Default mode: TUI (use `-w/--web` for web mode)
 
 ## Dependencies
 

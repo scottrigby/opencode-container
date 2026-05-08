@@ -61,41 +61,39 @@ cd "$WORKSPACE"
 case "$TEST" in
   1)
     echo "Test 1: Fast path — no features"
-    "$OC" tui
+    "$OC"
     ;;
   2)
     echo "Test 2: Feature path — Common utils features"
-    "$OC" --feature-file "$DATA/features-common-utils.json" tui
+    "$OC" --feature-file "$DATA/features-common-utils.json"
     ;;
   3)
     echo "Test 3: Feature path — Multiple features (Common utils + Go)"
     "$OC" \
       --feature-file "$DATA/features-common-utils.json" \
-      --feature-file "$DATA/features-go.json" \
-      tui
+      --feature-file "$DATA/features-go.json"
     ;;
   4)
     echo "Test 4: Feature path — Merge collision (last file wins)"
     "$OC" \
       --feature-file "$DATA/features-common-utils.json" \
-      --feature-file "$DATA/features-common-utils-override.json" \
-      tui
+      --feature-file "$DATA/features-common-utils-override.json"
     ;;
   5)
     echo "Test 5: Feature path — Web mode with features"
-    "$OC" --feature-file "$DATA/features-common-utils.json" web --port 5000
+    "$OC" --feature-file "$DATA/features-common-utils.json" -w -p 5000
     ;;
   6)
     echo "Test 6: Auto-detect hint (workspace has .devcontainer)"
-    "$OC" tui
+    "$OC"
     ;;
   7)
     echo "Test 7: Feature path — Use workspace .devcontainer (Rust)"
-    "$OC" --feature-file .devcontainer/devcontainer.json tui
+    "$OC" --feature-file .devcontainer/devcontainer.json
     ;;
   8)
     echo "Test 8: Rebuild — Force image rebuild"
-    "$OC" --build tui
+    "$OC" --build
     ;;
   9)
     echo "Test 9: Inspect generated devcontainer.json"
@@ -114,13 +112,13 @@ case "$TEST" in
     echo "Quick sanity suite (tests 1, 2, 6)"
     echo ""
     echo "--- Test 1: Fast path ---"
-    "$OC" tui || true
+    "$OC" || true
     echo ""
     echo "--- Test 2: Common utils feature path ---"
-    "$OC" --feature-file "$DATA/features-common-utils.json" tui || true
+    "$OC" --feature-file "$DATA/features-common-utils.json" || true
     echo ""
     echo "--- Test 6: Auto-detect hint ---"
-    "$OC" tui || true
+    "$OC" || true
     ;;
   *)
     echo "Unknown test: $TEST" >&2

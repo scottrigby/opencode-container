@@ -43,6 +43,9 @@ run_test "-h shows usage" "SYNOPSIS" "$OC" -h
 
 # --- Global flag validation ---
 run_test "missing --feature-file arg errors" "--feature-file requires an argument" "$OC" --feature-file
+run_test "missing --env-file arg errors" "--env-file requires an argument" "$OC" --env-file
+run_test "missing --env arg errors" "--env requires an argument" "$OC" --env
+run_test "missing --local-env arg errors" "--local-env requires an argument" "$OC" --local-env
 run_test "unknown option errors" "Unknown option" "$OC" --unknown
 
 # --- Fast path (no --feature-file) reaches podman check ---
@@ -68,6 +71,11 @@ run_test "zsh completion file exists" "compdef" echo "$ZSH_COMP"
 
 # --- Web mode port validation ---
 run_test "web mode with port reaches podman" "podman: command not found" "$OC" -w -p 5000
+
+# --- Environment variable flags ---
+run_test "-e/--env reaches podman fast path" "podman: command not found" "$OC" -e FOO=bar
+run_test "--env reaches podman fast path" "podman: command not found" "$OC" --env FOO=bar
+run_test "--local-env reaches podman fast path" "podman: command not found" "$OC" --local-env HOME
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

@@ -40,8 +40,16 @@ OPTIONS
                          devcontainer.json. Repeatable; later files win on
                          key collision. Requires npx (auto-installs
                          @devcontainers/cli and node-jq on first use).
-    -e, --env-file PATH  Pass an environment file to the container.
+    --env-file PATH
+                         Pass an environment file to the container.
                          Repeatable. Auto-detects .env in project root.
+    -e, --env VAR=value
+                         Set an environment variable in the container.
+                         Repeatable. Values are literal strings.
+    --local-env VAR
+                         Pass an environment variable from the host into
+                         the container. Uses the host's current value.
+                         Repeatable.
     -w, --web            Run in web UI mode instead of TUI (default)
     -p, --port PORT      Port to listen on (web mode only; default: 4096)
     --no-open            Do not auto-open the browser (web mode only)
@@ -60,15 +68,15 @@ COMMAND OPTIONS
         --zsh              Output zsh completion script
 
 EXAMPLES
-    opencode-container                      # TUI mode
-    opencode-container -w                     # Web mode
-    opencode-container -w -p 5000           # Web mode on port 5000
-    opencode-container -b -w -p 5000         # Rebuild, then web on 5000
-    opencode-container --no-git-root          # TUI, mount current dir
+    opencode-container                  # TUI mode
+    opencode-container -w               # Web mode
+    opencode-container -w -p 5000       # Web mode on port 5000
+    opencode-container -b -w -p 5000      # Rebuild, then web on 5000
+    opencode-container --no-git-root      # TUI, mount current dir
     opencode-container -f ./features.json -w
-    opencode-container projects               # List isolated projects
-    opencode-container completion --bash      # Bash completion script
-    opencode-container completion --zsh       # Zsh completion script
+    opencode-container projects           # List isolated projects
+    opencode-container completion --bash  # Bash completion script
+    opencode-container completion --zsh   # Zsh completion script
 
 See docs/commands.md for full documentation.
 EOF
@@ -136,6 +144,8 @@ WEB_PORT="$DEFAULT_PORT"
 WEB_NO_OPEN=false
 FEATURE_FILES=()
 ENV_FILES=()
+ENV_VARS=()
+LOCAL_ENV_VARS=()
 OPENCODE_EXTRA_ARGS=()
 
 while [[ $# -gt 0 ]]; do
@@ -153,12 +163,30 @@ while [[ $# -gt 0 ]]; do
         exit 1
       fi
       ;;
-    --env-file|-e)
+    --env-file)
       if [[ -n "${2:-}" ]] && [[ "${2:-}" != -* ]]; then
         ENV_FILES+=("$2")
         shift 2
       else
         echo "Error: --env-file requires an argument" >&2
+        exit 1
+      fi
+      ;;
+    --env|-e)
+      if [[ -n "${2:-}" ]] && [[ "${2:-}" != -* ]]; then
+        ENV_VARS+=("$2")
+        shift 2
+      else
+        echo "Error: --env requires an argument" >&2
+        exit 1
+      fi
+      ;;
+    --local-env)
+      if [[ -n "${2:-}" ]] && [[ "${2:-}" != -* ]]; then
+        LOCAL_ENV_VARS+=("$2")
+        shift 2
+      else
+        echo "Error: --local-env requires an argument" >&2
         exit 1
       fi
       ;;
@@ -409,7 +437,7 @@ if [[ ${#FEATURE_FILES[@]} -gt 0 ]]; then
   # from feature files. Each tool has its own env var conventions
   # (npm_config_cache, PIP_CACHE_DIR, GOMODCACHE, etc.).
   MERGED_FEATURES='{}'
-  for f in "${FEATURE_FILES[@]}"; do
+  for f in "${FEATURE_FILES[@]+"${FEATURE_FILES[@]}"}"; do
     if [[ ! -f "$f" ]]; then
       echo "Error: feature file not found: $f" >&2
       exit 1
@@ -445,7 +473,7 @@ if [[ ${#FEATURE_FILES[@]} -gt 0 ]]; then
   ENV_ARGS='[]'
   if [[ ${#ENV_FILES[@]} -gt 0 ]]; then
     env_json=""
-    for f in "${ENV_FILES[@]}"; do
+    for f in "${ENV_FILES[@]+"${ENV_FILES[@]}"}"; do
       if [[ -n "$env_json" ]]; then
         env_json+=","
       fi
@@ -458,10 +486,22 @@ if [[ ${#FEATURE_FILES[@]} -gt 0 ]]; then
 
   # Build environment map (values MUST be strings per devcontainer spec)
   if [[ "$NO_GIT_INIT" == true ]]; then
-    CONTAINER_ENV='{"OPENCODE_DISABLE_DEFAULT_PLUGINS":"true","OPENCODE_NO_GIT_INIT":"1"}'
+    CONTAINER_ENV_JSON='{"OPENCODE_DISABLE_DEFAULT_PLUGINS":"true","OPENCODE_NO_GIT_INIT":"1"}'
   else
-    CONTAINER_ENV='{"OPENCODE_DISABLE_DEFAULT_PLUGINS":"true"}'
+    CONTAINER_ENV_JSON='{"OPENCODE_DISABLE_DEFAULT_PLUGINS":"true"}'
   fi
+
+  # Merge --env VAR=value entries into containerEnv
+  for entry in "${ENV_VARS[@]+"${ENV_VARS[@]}"}"; do
+    var_name="${entry%%=*}"
+    var_value="${entry#*=}"
+    CONTAINER_ENV_JSON=$(echo "$CONTAINER_ENV_JSON" | "${JQ_CMD[@]}" --arg k "$var_name" --arg v "$var_value" '. + {($k): $v}')
+  done
+
+  # Merge --local-env VAR entries into containerEnv (devcontainer localEnv syntax)
+  for entry in "${LOCAL_ENV_VARS[@]+"${LOCAL_ENV_VARS[@]}"}"; do
+    CONTAINER_ENV_JSON=$(echo "$CONTAINER_ENV_JSON" | "${JQ_CMD[@]}" --arg k "$entry" --arg v "\${localEnv:$entry}" '. + {($k): $v}')
+  done
 
   # Generate devcontainer.json via jq.  All env values are strings (spec
   # requirement); features key is omitted when empty to avoid CLI bugs.
@@ -477,7 +517,7 @@ if [[ ${#FEATURE_FILES[@]} -gt 0 ]]; then
     --arg dataDir "$DATA_DIR" \
     --arg configDir "$CONFIG_DIR" \
     --arg codeDir "$CODE_DIR" \
-    --argjson containerEnv "$CONTAINER_ENV" \
+    --argjson containerEnv "$CONTAINER_ENV_JSON" \
     '{
       name: "opencode-container",
       image: $image,
@@ -626,8 +666,16 @@ if [[ "$NO_GIT_INIT" == true ]]; then
 fi
 
 # Add env-file args for Podman
-for f in "${ENV_FILES[@]}"; do
+for f in "${ENV_FILES[@]+"${ENV_FILES[@]}"}"; do
   PODMAN_ARGS+=(--env-file "$f")
+done
+
+# Add --env and --local-env args for Podman
+for entry in "${ENV_VARS[@]+"${ENV_VARS[@]}"}"; do
+  PODMAN_ARGS+=(-e "$entry")
+done
+for entry in "${LOCAL_ENV_VARS[@]+"${LOCAL_ENV_VARS[@]}"}"; do
+  PODMAN_ARGS+=(-e "$entry")
 done
 
 # ---------------------------------------------------------------------------

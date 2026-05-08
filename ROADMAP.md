@@ -31,7 +31,9 @@ This file tracks feature ideas and known issues for post-MVP implementation.
 function need review. The bash completion works correctly; zsh needs similar
 filtering logic.
 
-### 3. `--env` and `--local-env` Flags
+### 3. `--env` and `--local-env` Flags ✅
+
+**Status:** Implemented.
 
 **Feature:** Pass environment variables directly or from host environment.
 
@@ -50,6 +52,7 @@ filtering logic.
   }
   ```
 - Merge all into `containerEnv` key in generated `devcontainer.json`
+- Fast path passes `-e VAR=value` and `-e VAR` directly to Podman
 
 **Reference:** [VS Code Remote - Environment Variables](https://code.visualstudio.com/remote/advancedcontainers/environment-variables)
 

@@ -3,7 +3,7 @@
 _opencode_container() {
   local cur="${COMP_WORDS[COMP_CWORD]}"
   local prev="${COMP_WORDS[COMP_CWORD-1]}"
-  local opts="-b --build -f --feature-file -e --env-file -w --web -p --port --no-open --no-git-root --no-git-init -h --help"
+  local opts="-b --build -f --feature-file --env-file -e --env --local-env -w --web -p --port --no-open --no-git-root --no-git-init -h --help"
   local cmds="completion projects"
   local web_opts="-p --port --no-open"
 
@@ -13,7 +13,7 @@ _opencode_container() {
     case "${COMP_WORDS[i]}" in
       --) break ;;
       -b|--build|--no-git-root|--no-git-init|-h|--help) continue ;;
-      -f|--feature-file|-e|--env-file) (( i++ )); continue ;;
+      -f|--feature-file|--env-file|-e|--env|--local-env) (( i++ )); continue ;;
       -w|--web) web_seen=true; continue ;;
       -p|--port) (( i++ )); continue ;;
       --no-open) continue ;;

@@ -36,10 +36,9 @@ cd opencode-test-workspace
 git init
 
 # Invoke directly
-/path/to/opencode-container/bin/opencode-container tui
+/path/to/opencode-container/bin/opencode-container
 /path/to/opencode-container/bin/opencode-container \
-  --feature-file /path/to/opencode-container/tests/testdata/features-common-utils.json \
-  tui
+  --feature-file /path/to/opencode-container/tests/testdata/features-common-utils.json
 ```
 
 ## Feature JSON Files
