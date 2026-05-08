@@ -184,7 +184,32 @@ non-git directories could be removed.
 
 ---
 
-## 12. Port auto-discovery
+## 12. Web mode passthrough (no wrapper `--web` flag)
+
+The wrapper does not define its own `--web` or `--port` flags. Instead, it
+detects web mode when the first opencode argument is `web` (e.g.
+`opencode-container -- web --port 5000`).
+
+### Why passthrough?
+
+- **Thinner wrapper:** No re-implementation of opencode's CLI surface. Users use
+  opencode's native flags (`--port`, `--hostname`, `--pure`, etc.) directly.
+- **No flag collisions:** A wrapper `--port` could conflict with future opencode
+  flags or subcommands. Passthrough eliminates this entirely.
+- **Natural UX:** `docker run` and `podman run` use this pattern
+  (`podman run image <cmd> [args...]`). The wrapper follows the same convention.
+
+### Injected defaults
+
+The wrapper inspects opencode's `web` args and injects two defaults if missing:
+
+- **`--hostname 0.0.0.0`**: Required for the host browser to reach the container.
+  If the user sets a custom `--hostname`, the wrapper skips browser auto-open
+  (the host likely cannot reach a non-default hostname).
+- **`--port 4096`**: Provides a predictable default for port forwarding and URL
+  generation. If the user sets `--port`, that value is used instead.
+
+### Port auto-discovery
 
 Web mode scans from `4096` upward using `lsof` (macOS) or `ss` (Linux) to find
 an unused port. If the default is taken, it prints a message and continues. This

@@ -59,21 +59,37 @@ devcontainer CLI resolves the value from the host at container start time.
 In fast path, passes `-e VAR` directly to Podman, which inherits the
 host's current value.
 
-`-w`, `--web`
-: Run opencode in web UI mode instead of TUI (default). Auto-discovers
-a free port starting at `4096`, prints the URL, and opens your default
-browser. The container runs in the background; press Ctrl+C to stop.
-
-`-p`, `--port` *PORT*
-: Override the default port (`4096`, used in web mode). If the port is in
-use, the next available port is chosen automatically and a message is
-printed to stderr.
-
 `--no-open`
-: Do not automatically open the browser (web mode only). The URL is still
-printed to stdout.
+: Do not automatically open the browser when running the web UI. Only
+applies when the first opencode argument is `web` and no custom
+`--hostname` is set by the user. The URL is still printed to stdout.
 
-`--no-git-root`
+# WEB UI MODE
+
+The wrapper does not have a dedicated `--web` flag. Instead, it detects
+web mode when the first argument after `--` (or the first non-option
+argument) is `web`:
+
+```bash
+opencode-container -- web --port 5000 --pure
+```
+
+When web mode is detected, the wrapper:
+
+1. Injects `--hostname 0.0.0.0` if the user did not set `--hostname`
+   (required for the host to reach the container).
+2. Injects `--port 4096` if the user did not set `--port`.
+3. Forwards the port from the container to the host.
+4. Waits for the HTTP server to respond.
+5. Prints the URL and auto-opens the browser (unless `--no-open` was
+   passed or a custom `--hostname` was set).
+
+If the user sets a custom `--hostname`, the wrapper skips browser
+auto-open because the host likely cannot reach a non-default hostname.
+
+If opencode web subcommands or flags that do not start a server are
+detected (e.g. `help`, `--help`, `--version`), the wrapper skips the
+port wait and browser open entirely.
 : Mount the current working directory instead of auto-detecting and
 mounting the git repository root.
 
@@ -123,22 +139,34 @@ Run TUI mode in the current directory:
 opencode-container
 ```
 
-Run web mode on a custom port:
+Run web UI mode (auto-opens browser, forwards port 4096):
 
 ```bash
-opencode-container -w -p 5000
+opencode-container -- web
 ```
 
-Force a rebuild and start web mode:
+Run web UI on a custom port:
 
 ```bash
-opencode-container -b -w
+opencode-container -- web --port 5000
+```
+
+Run web UI with a custom hostname (skips browser auto-open):
+
+```bash
+opencode-container -- web --hostname 127.0.0.1 --port 5000
+```
+
+Force a rebuild and start web UI:
+
+```bash
+opencode-container -b -- web
 ```
 
 Mount the current subdirectory (not the git root) and do not auto-init git:
 
 ```bash
-opencode-container --no-git-root --no-git-init -w -p 5000
+opencode-container --no-git-root --no-git-init -- web
 ```
 
 Run with devcontainer features from a JSON file:
@@ -147,10 +175,10 @@ Run with devcontainer features from a JSON file:
 opencode-container -f ./features.json
 ```
 
-Run web mode with features on a custom port:
+Run web UI with features on a custom port:
 
 ```bash
-opencode-container -f ./features.json -w -p 5000
+opencode-container -f ./features.json -- web --port 5000
 ```
 
 See `tests/testdata/README.md` for ready-made feature files and a full manual

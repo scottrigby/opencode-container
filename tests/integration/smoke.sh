@@ -69,8 +69,10 @@ run_test "zsh completion has --feature-file" "--feature-file" echo "$ZSH_COMP"
 run_test "bash completion file exists" "complete -F" echo "$BASH_COMP"
 run_test "zsh completion file exists" "compdef" echo "$ZSH_COMP"
 
-# --- Web mode port validation ---
-run_test "web mode with port reaches podman" "podman: command not found" "$OC" -w -p 5000
+# --- Web mode passthrough ---
+run_test "web mode reaches podman" "podman: command not found" "$OC" -- web
+run_test "web mode with custom port reaches podman" "podman: command not found" "$OC" -- web --port 5000
+run_test "web mode with custom hostname reaches podman" "podman: command not found" "$OC" -- web --hostname 127.0.0.1
 
 # --- Environment variable flags ---
 run_test "-e/--env reaches podman fast path" "podman: command not found" "$OC" -e FOO=bar

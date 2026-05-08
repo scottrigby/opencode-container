@@ -3,15 +3,13 @@
 autoload -Uz compinit && compinit
 
 _opencode_container() {
-  local -a opts cmds web_opts
+  local -a opts cmds
   opts=(
     '-b' '--build'
     '-f' '--feature-file'
     '--env-file'
     '-e' '--env'
     '--local-env'
-    '-w' '--web'
-    '-p' '--port'
     '--no-open'
     '--no-git-root'
     '--no-git-init'
@@ -21,23 +19,16 @@ _opencode_container() {
     'completion'
     'projects'
   )
-  web_opts=(
-    '-p' '--port'
-    '--no-open'
-  )
 
   # Determine current context
   local cmd=""
-  local web_seen=false
   local i
   for (( i=2; i <= CURRENT; i++ )); do
     case "${words[i]}" in
       --) break ;;
-      -b|--build|--no-git-root|--no-git-init|-h|--help) continue ;;
+      -b|--build|--no-open|--no-git-root|--no-git-init|-h|--help) continue ;;
       -f|--feature-file|--env-file|-e|--env|--local-env) (( i++ )); continue ;;
-      -w|--web) web_seen=true; continue ;;
-      -p|--port) (( i++ )); continue ;;
-      --no-open|--bash|--zsh) continue ;;
+      --bash|--zsh) continue ;;
       completion|projects) cmd="${words[i]}"; break ;;
       *) break ;;
     esac
@@ -57,11 +48,6 @@ _opencode_container() {
   # No command yet — offer main opts + cmds
   compadd -a opts
   compadd -a cmds
-
-  # If web mode already seen, also offer web opts
-  if [[ "$web_seen" == true ]]; then
-    compadd -a web_opts
-  fi
 }
 
 compdef _opencode_container opencode-container

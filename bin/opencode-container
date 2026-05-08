@@ -23,9 +23,13 @@ SYNOPSIS
     opencode-container [options] [--] [opencode-args...]
 
 DESCRIPTION
-    A wrapper around podman (or the devcontainer CLI) that runs the opencode
-    CLI in a Debian-based (node:22-slim) container with per-project data
-    isolation.
+    A thin wrapper around podman (or the devcontainer CLI) that runs the
+    opencode CLI in a Debian-based (node:22-slim) container with per-project
+    data isolation.
+
+    All arguments after the optional -- delimiter are passed directly to the
+    opencode binary inside the container. The wrapper auto-detects when the
+    first argument is "web" and handles port forwarding and browser opening.
 
     When --feature-file is given, the wrapper uses the devcontainer CLI to
     layer devcontainer features (Node, Python, Go, etc.) on top of the base
@@ -50,9 +54,9 @@ OPTIONS
                          Pass an environment variable from the host into
                          the container. Uses the host's current value.
                          Repeatable.
-    -w, --web            Run in web UI mode instead of TUI (default)
-    -p, --port PORT      Port to listen on (web mode only; default: 4096)
-    --no-open            Do not auto-open the browser (web mode only)
+    --no-open            Do not auto-open the browser when running the web
+                         UI. Only applies when the first opencode argument
+                         is "web" and no custom --hostname is set.
     --no-git-root        Mount the current working directory instead of
                          auto-detecting the git repository root
     --no-git-init        Do not auto-initialise an empty git repo in
@@ -68,15 +72,15 @@ COMMAND OPTIONS
         --zsh              Output zsh completion script
 
 EXAMPLES
-    opencode-container                  # TUI mode
-    opencode-container -w               # Web mode
-    opencode-container -w -p 5000       # Web mode on port 5000
-    opencode-container -b -w -p 5000      # Rebuild, then web on 5000
-    opencode-container --no-git-root      # TUI, mount current dir
-    opencode-container -f ./features.json -w
-    opencode-container projects           # List isolated projects
-    opencode-container completion --bash  # Bash completion script
-    opencode-container completion --zsh   # Zsh completion script
+    opencode-container                      # TUI mode
+    opencode-container -- web               # Web UI mode
+    opencode-container -- web --port 5000   # Web UI on custom port
+    opencode-container -b -- web            # Rebuild, then web UI
+    opencode-container --no-git-root -- web # Web UI, mount current dir
+    opencode-container -f ./features.json -- web
+    opencode-container projects              # List isolated projects
+    opencode-container completion --bash     # Bash completion script
+    opencode-container completion --zsh    # Zsh completion script
 
 See docs/commands.md for full documentation.
 EOF
@@ -133,6 +137,37 @@ will_start_web_server() {
   return 0
 }
 
+# Detect web mode from opencode extra args and extract port/hostname config.
+# Injects --hostname 0.0.0.0 and --port <default> if not set by the user.
+detect_web_mode() {
+  WEB_MODE=false
+  WEB_PORT="$DEFAULT_PORT"
+  CUSTOM_HOSTNAME=false
+  local custom_port=false
+  local i
+
+  if [[ ${#OPENCODE_EXTRA_ARGS[@]} -gt 0 ]] && [[ "${OPENCODE_EXTRA_ARGS[0]}" == "web" ]]; then
+    WEB_MODE=true
+
+    for (( i=1; i < ${#OPENCODE_EXTRA_ARGS[@]}; i++ )); do
+      if [[ "${OPENCODE_EXTRA_ARGS[i]}" == "--port" ]] && [[ $((i+1)) -lt ${#OPENCODE_EXTRA_ARGS[@]} ]]; then
+        WEB_PORT="${OPENCODE_EXTRA_ARGS[$((i+1))]}"
+        custom_port=true
+      fi
+      if [[ "${OPENCODE_EXTRA_ARGS[i]}" == "--hostname" ]] && [[ $((i+1)) -lt ${#OPENCODE_EXTRA_ARGS[@]} ]]; then
+        CUSTOM_HOSTNAME=true
+      fi
+    done
+
+    if [[ "$CUSTOM_HOSTNAME" == false ]]; then
+      OPENCODE_EXTRA_ARGS+=(--hostname 0.0.0.0)
+    fi
+    if [[ "$custom_port" == false ]]; then
+      OPENCODE_EXTRA_ARGS+=(--port "$DEFAULT_PORT")
+    fi
+  fi
+}
+
 # ---------------------------------------------------------------------------
 # Phase 1: intercept --help / -h anywhere before the -- delimiter
 # ---------------------------------------------------------------------------
@@ -153,8 +188,6 @@ done
 FORCE_BUILD=false
 NO_GIT_ROOT=false
 NO_GIT_INIT=false
-WEB_MODE=false
-WEB_PORT="$DEFAULT_PORT"
 WEB_NO_OPEN=false
 FEATURE_FILES=()
 ENV_FILES=()
@@ -204,19 +237,7 @@ while [[ $# -gt 0 ]]; do
         exit 1
       fi
       ;;
-    --web|-w)
-      WEB_MODE=true
-      shift
-      ;;
-    --port|-p)
-      if [[ -n "${2:-}" ]] && [[ "${2:-}" != -* ]]; then
-        WEB_PORT="$2"
-        shift 2
-      else
-        echo "Error: --port requires an argument" >&2
-        exit 1
-      fi
-      ;;
+
     --no-open)
       WEB_NO_OPEN=true
       shift
@@ -261,6 +282,9 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+# Detect web mode from opencode args and inject defaults
+detect_web_mode
 
 
 # ---------------------------------------------------------------------------
@@ -618,7 +642,7 @@ if [[ ${#FEATURE_FILES[@]} -gt 0 ]]; then
         echo "Warning: server did not respond on port ${PORT}" >&2
       fi
 
-      if [[ "$http_ready" == true ]] && [[ "$WEB_NO_OPEN" == false ]]; then
+      if [[ "$http_ready" == true ]] && [[ "$WEB_NO_OPEN" == false ]] && [[ "$CUSTOM_HOSTNAME" == false ]]; then
         if command -v open >/dev/null 2>&1; then
           open "$URL"
         elif command -v xdg-open >/dev/null 2>&1; then
@@ -626,25 +650,16 @@ if [[ ${#FEATURE_FILES[@]} -gt 0 ]]; then
         fi
       fi
     fi
-
-    # Keep the container running; devcontainer exec web mode runs in foreground.
-    # Ctrl+C kills the exec process; the EXIT/INT trap cleans up the container.
-    "${DEVCONTAINER_CMD[@]}" exec \
-      --docker-path podman \
-      --workspace-folder "$CODE_DIR" \
-      --config "$DEVCONTAINER_JSON" \
-      opencode web --hostname 0.0.0.0 --port "$PORT" \
-      "${OPENCODE_EXTRA_ARGS[@]+"${OPENCODE_EXTRA_ARGS[@]}"}" || true
-  else
-    # TUI mode -- devcontainer exec inherits TTY from parent process
-    # automatically; do not pass --tty (not a valid exec flag).
-    "${DEVCONTAINER_CMD[@]}" exec \
-      --docker-path podman \
-      --workspace-folder "$CODE_DIR" \
-      --config "$DEVCONTAINER_JSON" \
-      opencode \
-      "${OPENCODE_EXTRA_ARGS[@]+"${OPENCODE_EXTRA_ARGS[@]}"}"
   fi
+
+  # Exec opencode with all user-supplied arguments (including injected defaults).
+  # Ctrl+C kills the exec process; the EXIT/INT trap cleans up the container.
+  "${DEVCONTAINER_CMD[@]}" exec \
+    --docker-path podman \
+    --workspace-folder "$CODE_DIR" \
+    --config "$DEVCONTAINER_JSON" \
+    opencode \
+    "${OPENCODE_EXTRA_ARGS[@]+"${OPENCODE_EXTRA_ARGS[@]}"}" || true
 
   exit 0
 fi
@@ -709,7 +724,6 @@ if [[ "$WEB_MODE" == true ]]; then
     "${PODMAN_ARGS[@]}" \
     -p "${PORT}:${PORT}" \
     "${IMAGE}" \
-    web --hostname 0.0.0.0 --port "${PORT}" \
     "${OPENCODE_EXTRA_ARGS[@]+"${OPENCODE_EXTRA_ARGS[@]}"}" &
   CONTAINER_PID=$!
 
@@ -753,8 +767,9 @@ if [[ "$WEB_MODE" == true ]]; then
 
     echo "URL: ${URL}"
 
-    # Auto-open browser only if port is ready and --no-open was not passed
-    if [[ "$http_ready" == true ]] && [[ "$WEB_NO_OPEN" == false ]]; then
+    # Auto-open browser only if port is ready, --no-open was not passed,
+    # and the user did not set a custom --hostname.
+    if [[ "$http_ready" == true ]] && [[ "$WEB_NO_OPEN" == false ]] && [[ "$CUSTOM_HOSTNAME" == false ]]; then
       if command -v open >/dev/null 2>&1; then
         open "$URL"
       elif command -v xdg-open >/dev/null 2>&1; then
