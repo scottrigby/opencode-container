@@ -1,0 +1,46 @@
+# opencode-container bash completion
+
+_opencode_container() {
+  local cur="${COMP_WORDS[COMP_CWORD]}"
+  local prev="${COMP_WORDS[COMP_CWORD-1]}"
+  local opts="-b --build -f --feature-file -e --env-file -w --web -p --port --no-open --no-git-root --no-git-init -h --help"
+  local cmds="completion projects"
+  local web_opts="-p --port --no-open"
+
+  local i cmd_seen=false cmd=""
+  local web_seen=false
+  for (( i=1; i < COMP_CWORD; i++ )); do
+    case "${COMP_WORDS[i]}" in
+      --) break ;;
+      -b|--build|--no-git-root|--no-git-init|-h|--help) continue ;;
+      -f|--feature-file|-e|--env-file) (( i++ )); continue ;;
+      -w|--web) web_seen=true; continue ;;
+      -p|--port) (( i++ )); continue ;;
+      --no-open) continue ;;
+      --bash|--zsh) continue ;;
+      completion|projects) cmd_seen=true; cmd="${COMP_WORDS[i]}"; break ;;
+    esac
+  done
+
+  if [[ "$cmd_seen" == true ]]; then
+    case "$cmd" in
+      completion)
+        COMPREPLY=($(compgen -W "--bash --zsh" -- "${cur}"))
+        ;;
+      projects)
+        COMPREPLY=()
+        ;;
+    esac
+    return
+  fi
+
+  # No command yet — offer main opts + cmds
+  COMPREPLY=($(compgen -W "${opts} ${cmds}" -- "${cur}"))
+
+  # If web mode already seen, also offer web opts
+  if [[ "$web_seen" == true ]] && [[ "$prev" != "-p" && "$prev" != "--port" ]]; then
+    COMPREPLY+=($(compgen -W "${web_opts}" -- "${cur}"))
+  fi
+
+  COMPREPLY=()
+} && complete -F _opencode_container opencode-container

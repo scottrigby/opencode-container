@@ -2,45 +2,16 @@
   "name": "opencode-container",
   "version": "0.1.0",
   "description": "Run opencode in a Podman container with per-project isolation",
-  "global_options": [
+  "commands": [
     {
-      "name": "--help",
-      "short": "-h",
-      "type": "boolean",
-      "applies_to": "all",
-      "description": "Print usage and exit"
-    }
-  ],
-  "subcommands": [
-    {
-      "name": "tui",
-      "description": "Terminal UI mode (default when no subcommand is given)",
-      "type": "container",
-      "options": []
-    },
-    {
-      "name": "web",
-      "description": "Web UI mode",
-      "type": "container",
-      "options": [
-        {
-          "name": "--port",
-          "short": "-p",
-          "type": "number",
-          "default": 4096,
-          "description": "Port to listen on"
-        },
-        {
-          "name": "--no-open",
-          "type": "boolean",
-          "description": "Do not auto-open the browser"
-        }
-      ]
+      "name": "projects",
+      "description": "List all projects with isolated session data",
+      "options": [],
+      "args": []
     },
     {
       "name": "completion",
       "description": "Generate shell completion scripts",
-      "type": "standalone",
       "options": [
         {
           "name": "--bash",
@@ -52,16 +23,17 @@
           "type": "boolean",
           "description": "Output zsh completion script"
         }
-      ]
-    },
-    {
-      "name": "projects",
-      "description": "List all projects with isolated session data",
-      "type": "standalone",
-      "options": []
+      ],
+      "args": []
     }
   ],
-  "container_options": [
+  "main_options": [
+    {
+      "name": "--help",
+      "short": "-h",
+      "type": "boolean",
+      "description": "Print usage and exit"
+    },
     {
       "name": "--build",
       "short": "-b",
@@ -70,15 +42,35 @@
     },
     {
       "name": "--feature-file",
+      "short": "-f",
       "type": "path",
       "repeatable": true,
       "description": "Merge .features from a JSON file into the generated devcontainer.json. Later files win on key collision."
     },
     {
       "name": "--env-file",
+      "short": "-e",
       "type": "path",
       "repeatable": true,
       "description": "Pass an environment file to the container. Auto-detects .env in project root."
+    },
+    {
+      "name": "--web",
+      "short": "-w",
+      "type": "boolean",
+      "description": "Run in web UI mode instead of TUI"
+    },
+    {
+      "name": "--port",
+      "short": "-p",
+      "type": "number",
+      "default": 4096,
+      "description": "Port to listen on (web mode only)"
+    },
+    {
+      "name": "--no-open",
+      "type": "boolean",
+      "description": "Do not auto-open the browser (web mode only)"
     },
     {
       "name": "--no-git-root",
@@ -90,5 +82,9 @@
       "type": "boolean",
       "description": "Do not auto-initialise an empty git repo in non-git directories"
     }
-  ]
+  ],
+  "main_args": {
+    "description": "Arguments passed through to opencode",
+    "optional": true
+  }
 }

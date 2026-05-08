@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 set -euo pipefail
 
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -18,7 +19,8 @@ NAME
     opencode-container — run opencode in a Podman container with per-project isolation
 
 SYNOPSIS
-    opencode-container [global-options] [subcommand] [subcommand-options]
+    opencode-container [options] [command] [command-options]
+    opencode-container [options] [--] [opencode-args...]
 
 DESCRIPTION
     A wrapper around podman (or the devcontainer CLI) that runs the opencode
@@ -30,45 +32,43 @@ DESCRIPTION
     image. Without --feature-file, the container starts directly via Podman
     for a fast path.
 
-GLOBAL OPTIONS
+OPTIONS
+    -h, --help           Print this help and exit
     -b, --build          Force rebuild the container image before running
-    --feature-file PATH  Merge .features from a JSON file into the generated
+    -f, --feature-file PATH
+                         Merge .features from a JSON file into the generated
                          devcontainer.json. Repeatable; later files win on
                          key collision. Requires npx (auto-installs
                          @devcontainers/cli and node-jq on first use).
-    --env-file PATH      Pass an environment file to the container.
+    -e, --env-file PATH  Pass an environment file to the container.
                          Repeatable. Auto-detects .env in project root.
+    -w, --web            Run in web UI mode instead of TUI (default)
+    -p, --port PORT      Port to listen on (web mode only; default: 4096)
+    --no-open            Do not auto-open the browser (web mode only)
     --no-git-root        Mount the current working directory instead of
                          auto-detecting the git repository root
     --no-git-init        Do not auto-initialise an empty git repo in
                          non-git directories
-    -h, --help           Print this help and exit
 
 COMMANDS
-    tui                  Terminal UI mode (default when no subcommand is given)
-    web                  Web UI mode
-    completion           Generate shell completion scripts
     projects             List all projects with isolated session data
+    completion           Generate shell completion scripts
 
 COMMAND OPTIONS
     completion
         --bash             Output bash completion script
         --zsh              Output zsh completion script
 
-    web
-        -p, --port PORT    Port to listen on (default: 4096)
-        --no-open          Do not auto-open the browser
-
 EXAMPLES
     opencode-container                      # TUI mode
-    opencode-container web                  # Web mode
-    opencode-container web --port 5000    # Web mode on port 5000
-    opencode-container -b web -p 5000     # Rebuild, then web on 5000
-    opencode-container --no-git-root        # TUI, mount current dir
-    opencode-container --feature-file ./features.json web
-    opencode-container projects             # List isolated projects
-    opencode-container completion --bash    # Bash completion script
-    opencode-container completion --zsh     # Zsh completion script
+    opencode-container -w                     # Web mode
+    opencode-container -w -p 5000           # Web mode on port 5000
+    opencode-container -b -w -p 5000         # Rebuild, then web on 5000
+    opencode-container --no-git-root          # TUI, mount current dir
+    opencode-container -f ./features.json -w
+    opencode-container projects               # List isolated projects
+    opencode-container completion --bash      # Bash completion script
+    opencode-container completion --zsh       # Zsh completion script
 
 See docs/commands.md for full documentation.
 EOF
@@ -124,14 +124,19 @@ for arg in "$@"; do
   fi
 done
 
+
 # ---------------------------------------------------------------------------
-# Phase 2: parse global options (before subcommand)
+# Phase 2: parse options
 # ---------------------------------------------------------------------------
 FORCE_BUILD=false
 NO_GIT_ROOT=false
 NO_GIT_INIT=false
+WEB_MODE=false
+WEB_PORT="$DEFAULT_PORT"
+WEB_NO_OPEN=false
 FEATURE_FILES=()
 ENV_FILES=()
+OPENCODE_EXTRA_ARGS=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -139,7 +144,7 @@ while [[ $# -gt 0 ]]; do
       FORCE_BUILD=true
       shift
       ;;
-    --feature-file)
+    --feature-file|-f)
       if [[ -n "${2:-}" ]] && [[ "${2:-}" != -* ]]; then
         FEATURE_FILES+=("$2")
         shift 2
@@ -148,7 +153,7 @@ while [[ $# -gt 0 ]]; do
         exit 1
       fi
       ;;
-    --env-file)
+    --env-file|-e)
       if [[ -n "${2:-}" ]] && [[ "${2:-}" != -* ]]; then
         ENV_FILES+=("$2")
         shift 2
@@ -156,6 +161,31 @@ while [[ $# -gt 0 ]]; do
         echo "Error: --env-file requires an argument" >&2
         exit 1
       fi
+      ;;
+    --web|-w)
+      WEB_MODE=true
+      shift
+      ;;
+    --port|-p)
+      if [[ -n "${2:-}" ]] && [[ "${2:-}" != -* ]]; then
+        WEB_PORT="$2"
+        shift 2
+      else
+        echo "Error: --port requires an argument" >&2
+        exit 1
+      fi
+      ;;
+    --no-open)
+      WEB_NO_OPEN=true
+      shift
+      ;;
+    --bash)
+      COMPLETION_SHELL="bash"
+      shift
+      ;;
+    --zsh)
+      COMPLETION_SHELL="zsh"
+      shift
       ;;
     --no-git-root)
       NO_GIT_ROOT=true
@@ -167,102 +197,34 @@ while [[ $# -gt 0 ]]; do
       ;;
     --)
       shift
+      OPENCODE_EXTRA_ARGS+=("$@")
       break
       ;;
     -*)
-      echo "Unknown global option: $1" >&2
+      echo "Unknown option: $1" >&2
       usage >&2
       exit 1
       ;;
     *)
-      break
+      # First non-option arg: check if it's a command
+      if [[ -z "${COMMAND:-}" ]] && ([[ "$1" == "projects" ]] || [[ "$1" == "completion" ]]); then
+        COMMAND="$1"
+        shift
+        # Don't break — continue parsing to handle command options like --bash/--zsh
+        continue
+      fi
+      # Otherwise, it's an opencode arg
+      OPENCODE_EXTRA_ARGS+=("$1")
+      shift
       ;;
   esac
 done
 
-# ---------------------------------------------------------------------------
-# Phase 3: identify subcommand
-# ---------------------------------------------------------------------------
-SUBCOMMAND="${1:-tui}"
-if [[ -n "${1:-}" ]]; then
-  shift
-fi
-
-# ---------------------------------------------------------------------------
-# Phase 4: subcommand-specific parsing
-# ---------------------------------------------------------------------------
-WEB_PORT="$DEFAULT_PORT"
-WEB_NO_OPEN=false
-WEB_EXTRA_ARGS=()
-TUI_EXTRA_ARGS=()
-
-# projects is handled immediately below
-if [[ "$SUBCOMMAND" == "projects" ]]; then
-  # projects takes no extra options; any remaining args are ignored
-  :
-elif [[ "$SUBCOMMAND" == "completion" ]]; then
-  COMPLETION_SHELL=""
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      --bash)
-        COMPLETION_SHELL="bash"
-        shift
-        ;;
-      --zsh)
-        COMPLETION_SHELL="zsh"
-        shift
-        ;;
-      *)
-        echo "Unknown completion option: $1" >&2
-        echo "Usage: opencode-container completion [--bash|--zsh]" >&2
-        exit 1
-        ;;
-    esac
-  done
-elif [[ "$SUBCOMMAND" == "web" ]]; then
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      --port|-p)
-        if [[ -n "${2:-}" ]] && [[ "${2:-}" != -* ]]; then
-          WEB_PORT="$2"
-          shift 2
-        else
-          echo "Error: --port requires an argument" >&2
-          exit 1
-        fi
-        ;;
-      --no-open)
-        WEB_NO_OPEN=true
-        shift
-        ;;
-      --)
-        shift
-        break
-        ;;
-      -*)
-        echo "Unknown web option: $1" >&2
-        usage >&2
-        exit 1
-        ;;
-      *)
-        WEB_EXTRA_ARGS+=("$1")
-        shift
-        ;;
-    esac
-  done
-elif [[ "$SUBCOMMAND" == "tui" ]] || [[ "$SUBCOMMAND" == "" ]]; then
-  SUBCOMMAND="tui"
-  TUI_EXTRA_ARGS=("$@")
-else
-  echo "Unknown subcommand: $SUBCOMMAND" >&2
-  usage >&2
-  exit 1
-fi
 
 # ---------------------------------------------------------------------------
 # Subcommand: projects (no container needed)
 # ---------------------------------------------------------------------------
-if [[ "$SUBCOMMAND" == "projects" ]]; then
+if [[ "${COMMAND:-}" == "projects" ]]; then
   DATA_ROOT="${XDG_DATA_HOME:-$HOME/.local/share}/opencode"
   if [[ ! -d "$DATA_ROOT" ]]; then
     echo "No projects found in $DATA_ROOT" >&2
@@ -299,11 +261,12 @@ if [[ "$SUBCOMMAND" == "projects" ]]; then
   exit 0
 fi
 
+
 # ---------------------------------------------------------------------------
 # Subcommand: completion (no container needed)
 # ---------------------------------------------------------------------------
-if [[ "$SUBCOMMAND" == "completion" ]]; then
-  if [[ -z "$COMPLETION_SHELL" ]]; then
+if [[ "${COMMAND:-}" == "completion" ]]; then
+  if [[ -z "${COMPLETION_SHELL:-}" ]]; then
     cat <<'EOF'
 Generate shell completion scripts for opencode-container.
 
@@ -315,118 +278,30 @@ Usage: opencode-container completion [--bash|--zsh]
 Examples:
   opencode-container completion --bash > /etc/bash_completion.d/opencode-container
   opencode-container completion --zsh > "${fpath[1]}/_opencode-container"
+
+Completion files are also available directly:
+  completions/bash/opencode-container
+  completions/zsh/_opencode-container
 EOF
     exit 0
   fi
 
+  # Resolve script directory, even if installed via symlink.
+  SCRIPT_PATH="$0"
+  while [[ -L "$SCRIPT_PATH" ]]; do
+    LINK_TARGET=$(readlink "$SCRIPT_PATH")
+    if [[ "$LINK_TARGET" == /* ]]; then
+      SCRIPT_PATH="$LINK_TARGET"
+    else
+      SCRIPT_PATH="$(dirname "$SCRIPT_PATH")/$LINK_TARGET"
+    fi
+  done
+  SCRIPT_DIR=$(cd "$(dirname "$SCRIPT_PATH")" && pwd)
+
   if [[ "$COMPLETION_SHELL" == "bash" ]]; then
-    cat <<'BASHEOF'
-# opencode-container bash completion
-
-_opencode_container() {
-  local cur="${COMP_WORDS[COMP_CWORD]}"
-  local prev="${COMP_WORDS[COMP_CWORD-1]}"
-  local global_opts="-b --build --feature-file --env-file --no-git-root --no-git-init -h --help"
-  local web_opts="-p --port --no-open"
-  local subcommands="completion tui web projects"
-
-  local i subcommand_seen=false subcommand=""
-  for (( i=1; i < COMP_CWORD; i++ )); do
-    case "${COMP_WORDS[i]}" in
-      --) break ;;
-      --build|-b|--no-git-root|--no-git-init|--help|-h|--feature-file|--env-file) continue ;;
-      --port|-p|--bash|--zsh) continue ;;
-      completion|tui|web|projects) subcommand_seen=true; subcommand="${COMP_WORDS[i]}"; break ;;
-    esac
-  done
-
-  if [[ "$subcommand_seen" == false ]]; then
-    COMPREPLY=($(compgen -W "${global_opts} ${subcommands}" -- "${cur}"))
-    return
-  fi
-
-  case "$subcommand" in
-    completion)
-      COMPREPLY=($(compgen -W "--bash --zsh" -- "${cur}"))
-      return
-      ;;
-    web)
-      if [[ "$prev" == "--port" || "$prev" == "-p" ]]; then
-        COMPREPLY=()
-        return
-      fi
-      COMPREPLY=($(compgen -W "${web_opts}" -- "${cur}"))
-      return
-      ;;
-    tui|projects)
-      COMPREPLY=()
-      return
-      ;;
-  esac
-
-  COMPREPLY=()
-} && complete -F _opencode_container opencode-container
-BASHEOF
+    cat "$SCRIPT_DIR/../completions/bash/opencode-container"
   elif [[ "$COMPLETION_SHELL" == "zsh" ]]; then
-    cat <<'ZSHEOF'
-# opencode-container zsh completion
-
-autoload -Uz compinit && compinit
-
-_opencode_container() {
-  local -a opts cmds
-  opts=(
-    '-b'
-    '--build'
-    '--feature-file'
-    '--env-file'
-    '--no-git-root'
-    '--no-git-init'
-    '-h'
-    '--help'
-  )
-  cmds=(
-    'completion'
-    'tui'
-    'web'
-    'projects'
-  )
-
-  # Determine current context
-  local cmd=""
-  local i
-  for (( i=2; i <= CURRENT; i++ )); do
-    case "${words[i]}" in
-      --) break ;;
-      -b|--build|--no-git-root|--no-git-init|-h|--help) continue ;;
-      --feature-file|--env-file) (( i++ )); continue ;;
-      -p|--port) (( i++ )); continue ;;
-      --bash|--zsh) continue ;;
-      completion|tui|web|projects) cmd="${words[i]}"; break ;;
-      *) break ;;
-    esac
-  done
-
-  if [[ -z "$cmd" ]]; then
-    compadd -a opts
-    compadd -a cmds
-    return
-  fi
-
-  case "$cmd" in
-    completion)
-      compadd --bash --zsh
-      ;;
-    web)
-      compadd -p --port --no-open
-      ;;
-    tui|projects)
-      ;;
-  esac
-}
-
-compdef _opencode_container opencode-container
-ZSHEOF
+    cat "$SCRIPT_DIR/../completions/zsh/_opencode-container"
   fi
   exit 0
 fi
@@ -480,6 +355,7 @@ if [[ -f "$CODE_DIR/.env" ]]; then
   ENV_FILES+=("$CODE_DIR/.env")
   echo "Auto-detected env file: $CODE_DIR/.env" >&2
 fi
+
 
 # Hint if the project has its own .devcontainer directory
 if [[ -f "$CODE_DIR/.devcontainer/devcontainer.json" ]]; then
@@ -556,7 +432,7 @@ if [[ ${#FEATURE_FILES[@]} -gt 0 ]]; then
   # Build forwardPorts and port bindings for web mode
   FORWARD_PORTS='[]'
   EXTRA_RUNARGS='[]'
-  if [[ "$SUBCOMMAND" == "web" ]]; then
+  if [[ "$WEB_MODE" == true ]]; then
     PORT=$(find_free_port "$WEB_PORT")
     if [[ "$PORT" != "$WEB_PORT" ]]; then
       echo "Port ${WEB_PORT} in use, using port ${PORT} instead" >&2
@@ -664,7 +540,7 @@ if [[ ${#FEATURE_FILES[@]} -gt 0 ]]; then
   }
   trap cleanup_devcontainer EXIT INT TERM
 
-  if [[ "$SUBCOMMAND" == "web" ]]; then
+  if [[ "$WEB_MODE" == true ]]; then
     CODE_B64=$(printf '%s' '/code' | base64 | tr -d '\n' | tr '+/' '-_' | tr -d '=')
     URL="http://localhost:${PORT}/${CODE_B64}"
     echo "URL: ${URL}"
@@ -701,7 +577,7 @@ if [[ ${#FEATURE_FILES[@]} -gt 0 ]]; then
       --workspace-folder "$CODE_DIR" \
       --config "$DEVCONTAINER_JSON" \
       opencode web --hostname 0.0.0.0 --port "$PORT" \
-      "${WEB_EXTRA_ARGS[@]+"${WEB_EXTRA_ARGS[@]}"}" || true
+      "${OPENCODE_EXTRA_ARGS[@]+"${OPENCODE_EXTRA_ARGS[@]}"]}" || true
   else
     # TUI mode -- devcontainer exec inherits TTY from parent process
     # automatically; do not pass --tty (not a valid exec flag).
@@ -710,7 +586,7 @@ if [[ ${#FEATURE_FILES[@]} -gt 0 ]]; then
       --workspace-folder "$CODE_DIR" \
       --config "$DEVCONTAINER_JSON" \
       opencode \
-      "${TUI_EXTRA_ARGS[@]+"${TUI_EXTRA_ARGS[@]}"}"
+      "${OPENCODE_EXTRA_ARGS[@]+"${OPENCODE_EXTRA_ARGS[@]}"]}"
   fi
 
   exit 0
@@ -755,9 +631,9 @@ for f in "${ENV_FILES[@]}"; do
 done
 
 # ---------------------------------------------------------------------------
-# Subcommand: web
+# Web mode (fast path)
 # ---------------------------------------------------------------------------
-if [[ "$SUBCOMMAND" == "web" ]]; then
+if [[ "$WEB_MODE" == true ]]; then
   PORT=$(find_free_port "$WEB_PORT")
   if [[ "$PORT" != "$WEB_PORT" ]]; then
     echo "Port ${WEB_PORT} in use, using port ${PORT} instead" >&2
@@ -769,7 +645,7 @@ if [[ "$SUBCOMMAND" == "web" ]]; then
     -p "${PORT}:${PORT}" \
     "${IMAGE}" \
     web --hostname 0.0.0.0 --port "${PORT}" \
-    "${WEB_EXTRA_ARGS[@]+"${WEB_EXTRA_ARGS[@]}"}" &
+    "${OPENCODE_EXTRA_ARGS[@]+"${OPENCODE_EXTRA_ARGS[@]}"]}" &
   CONTAINER_PID=$!
 
   # Wait briefly for Podman to register the container, then look up its name
@@ -837,11 +713,11 @@ if [[ "$SUBCOMMAND" == "web" ]]; then
   wait $CONTAINER_PID || true
 
 # ---------------------------------------------------------------------------
-# Subcommand: tui (default)
+# TUI mode (default)
 # ---------------------------------------------------------------------------
 else
   podman run -it --rm \
     "${PODMAN_ARGS[@]}" \
     "${IMAGE}" \
-    "${TUI_EXTRA_ARGS[@]+"${TUI_EXTRA_ARGS[@]}"}"
+    "${OPENCODE_EXTRA_ARGS[@]+"${OPENCODE_EXTRA_ARGS[@]}"]}"
 fi
