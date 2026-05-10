@@ -1,9 +1,10 @@
 use anyhow::Result;
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use std::fs;
-use std::net::TcpStream;
+use std::net::{TcpStream, ToSocketAddrs};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::OnceLock;
 use std::time::Duration;
 
 pub fn resolve_path(path: &Path) -> Result<PathBuf> {
@@ -50,11 +51,16 @@ fn port_in_use(port: u16) -> bool {
 }
 
 pub fn port_is_open(host: &str, port: u16) -> bool {
-    TcpStream::connect_timeout(
-        &format!("{}:{}", host, port).parse().unwrap(),
-        Duration::from_secs(2),
-    )
-    .is_ok()
+    let addrs: Vec<_> = match (host, port).to_socket_addrs() {
+        Ok(iter) => iter.collect(),
+        Err(_) => return false,
+    };
+    for addr in addrs {
+        if TcpStream::connect_timeout(&addr, Duration::from_secs(2)).is_ok() {
+            return true;
+        }
+    }
+    false
 }
 
 pub fn will_start_web_server(args: &[String]) -> bool {
@@ -136,15 +142,7 @@ pub fn build_image(container_dir: &Path) -> Result<()> {
 }
 
 pub fn decode_base64url(input: &str) -> Result<String> {
-    let mut padded = input.to_string();
-    let mod_len = input.len() % 4;
-    if mod_len == 2 {
-        padded.push_str("==");
-    } else if mod_len == 3 {
-        padded.push('=');
-    }
-    let standard = padded.replace('_', "/").replace('-', "+");
-    let bytes = URL_SAFE_NO_PAD.decode(&standard)?;
+    let bytes = URL_SAFE_NO_PAD.decode(input)?;
     Ok(String::from_utf8_lossy(&bytes).to_string())
 }
 
@@ -153,11 +151,15 @@ pub fn compute_project_id(path: &str) -> String {
 }
 
 pub fn container_cmd() -> &'static str {
-    if Command::new("podman").arg("--version").status().is_ok() {
-        "podman"
-    } else {
-        "docker"
-    }
+    static CMD: OnceLock<String> = OnceLock::new();
+    CMD.get_or_init(|| {
+        if Command::new("podman").arg("--version").status().is_ok() {
+            "podman".to_string()
+        } else {
+            "docker".to_string()
+        }
+    })
+    .as_str()
 }
 
 pub fn devcontainer_cmd() -> Vec<String> {
@@ -191,8 +193,8 @@ mod tests {
     }
 
     #[test]
-    fn test_decode_base64url_with_padding() {
-        // Test that padding is correctly added for base64url decoding
+    fn test_decode_base64url_no_padding() {
+        // Base64url without padding (as produced by compute_project_id)
         let input = "L2hvbWUvdXNlci9teS1wcm9qZWN0";
         let decoded = decode_base64url(input).unwrap();
         assert_eq!(decoded, "/home/user/my-project");

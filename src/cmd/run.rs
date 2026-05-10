@@ -44,10 +44,12 @@ pub fn run(cli: Cli) -> Result<()> {
     let data_dir = dirs::data_dir()
         .unwrap_or_else(|| PathBuf::from(env::var("HOME").unwrap_or_else(|_| String::from("~"))))
         .join("opencode")
+        .join("data")
         .join(&project_id);
     let config_dir = dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from(env::var("HOME").unwrap_or_else(|_| String::from("~"))))
         .join("opencode")
+        .join("config")
         .join(&project_id);
 
     fs::create_dir_all(&data_dir)?;
@@ -217,6 +219,7 @@ fn run_devcontainer(
     let cache_dir = dirs::cache_dir()
         .unwrap_or_else(|| PathBuf::from(env::var("HOME").unwrap_or_else(|_| String::from("~"))))
         .join("opencode")
+        .join("cache")
         .join(project_id);
     fs::create_dir_all(&cache_dir)?;
     let devcontainer_json_path = cache_dir.join("devcontainer.json");
@@ -587,6 +590,7 @@ fn open_browser(url: &str) -> Result<()> {
     if Command::new("xdg-open").arg(url).status().map(|s| s.success()).unwrap_or(false) {
         return Ok(());
     }
-    // Browser open failed, but that's not fatal
+    eprintln!("Warning: could not auto-open browser (tried 'open' and 'xdg-open')");
+    eprintln!("         Open manually: {}", url);
     Ok(())
 }

@@ -5,7 +5,8 @@ use std::path::PathBuf;
 pub fn run() -> Result<()> {
     let data_root = dirs::data_dir()
         .unwrap_or_else(|| PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| String::from("~"))))
-        .join("opencode");
+        .join("opencode")
+        .join("data");
 
     if !data_root.exists() {
         eprintln!("No projects found in {}", data_root.display());

@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # Manual Podman Commands
 
-If you prefer not to use the `bin/opencode-container` wrapper, run Podman
+If you prefer not to use the `opencode-container` wrapper, run Podman
 commands directly.
 
 For the wrapper's usage, subcommands, and options, see [`docs/commands.md`](commands.md).
@@ -12,8 +12,15 @@ Compute your project ID and create data directories:
 
 ```bash
 PROJECT_ID=$(echo -n "$PWD" | base64 | tr -d '\n' | tr '+/' '-_' | tr -d '=')
-DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/opencode/$PROJECT_ID"
-CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/opencode/$PROJECT_ID"
+
+# Linux
+DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/opencode/data/$PROJECT_ID"
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/opencode/config/$PROJECT_ID"
+
+# macOS
+# DATA_DIR="$HOME/Library/Application Support/opencode/data/$PROJECT_ID"
+# CONFIG_DIR="$HOME/Library/Application Support/opencode/config/$PROJECT_ID"
+
 mkdir -p "$DATA_DIR" "$CONFIG_DIR"
 ```
 
@@ -28,8 +35,8 @@ podman build -t localhost/opencode-container /path/to/opencode-container/contain
 ```bash
 podman run -it --rm \
   --label "opencode.project.id=${PROJECT_ID}" \
-  -v "$DATA_DIR:/home/opencode/.local/share/opencode:Z" \
-  -v "$CONFIG_DIR:/home/opencode/.config/opencode:Z" \
+  -v "$DATA_DIR:/home/node/.local/share/opencode:Z" \
+  -v "$CONFIG_DIR:/home/node/.config/opencode:Z" \
   -v "$PWD:/code:Z" \
   -e OPENCODE_DISABLE_DEFAULT_PLUGINS=true \
   localhost/opencode-container
@@ -41,8 +48,8 @@ podman run -it --rm \
 podman run -i --rm --init \
   --label "opencode.project.id=${PROJECT_ID}" \
   -p 4096:4096 \
-  -v "$DATA_DIR:/home/opencode/.local/share/opencode:Z" \
-  -v "$CONFIG_DIR:/home/opencode/.config/opencode:Z" \
+  -v "$DATA_DIR:/home/node/.local/share/opencode:Z" \
+  -v "$CONFIG_DIR:/home/node/.config/opencode:Z" \
   -v "$PWD:/code:Z" \
   -e OPENCODE_DISABLE_DEFAULT_PLUGINS=true \
   localhost/opencode-container web --hostname 0.0.0.0
