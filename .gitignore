@@ -14,3 +14,7 @@
 
 # E2E test workspace (auto-initialized with git init)
 tests/testdata/test-project/.git/
+
+# Rust
+/target/
+**/*.rs.bk

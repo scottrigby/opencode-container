@@ -17,5 +17,8 @@ base64 = "0.22"
 ctrlc = "3.4"
 tempfile = "3.10"
 
+[dev-dependencies]
+assert_cmd = "2.0"
+
 [build-dependencies]
 clap_complete = "4.5"

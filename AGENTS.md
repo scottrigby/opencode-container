@@ -4,32 +4,68 @@
 
 ```
 opencode-container/
-├── bin/opencode-container          # Main wrapper script (bash)
+├── Cargo.toml           # Rust project manifest
+├── src/
+│   ├── main.rs          # Entry point
+│   ├── cli.rs           # Clap derive structs (single source of truth for CLI)
+│   ├── util.rs          # Helpers: base64url, port probing, image building
+│   └── cmd/
+│       ├── mod.rs
+│       ├── projects.rs   # List isolated project data
+│       ├── completion.rs # Generate shell completions
+│       └── run.rs        # Fast path + devcontainer path
 ├── container/
-│   ├── Containerfile.alpine        # Alpine + gcompat + non-root user
-│   ├── Containerfile.debian        # Debian (node:22-slim) + non-root user
-│   └── entrypoint.sh               # Auto-init git repo for non-git dirs
-├── docs/                           # See docs/ for full reference
-├── patches/                        # Upstream patches (see patches/readme.md)
+│   ├── Containerfile.alpine
+│   ├── Containerfile.debian
+│   └── entrypoint.sh
+├── tests/
+│   ├── cli.rs            # Integration tests (CLI surface)
+│   ├── testdata/
+│   └── e2e/              # E2E tests (spawn binary, test real workflows)
+├── docs/
+│   ├── commands.md
+│   ├── design.md
+│   └── devcontainer.md
 ├── README.md
-└── AGENTS.md                       # This file
+└── AGENTS.md             # This file
 ```
 
 ## Build and test
 
 ```bash
-bash -n bin/opencode-container                                              # Syntax check
-zsh test-completion.sh                                                      # Completion tests (requires bash + zsh)
-./tests/integration/smoke.sh                                                # Dry-run smoke tests (no Podman required)
-podman build -t localhost/opencode-container:debian -f container/Containerfile.debian container/   # Build Debian image
-podman build -t localhost/opencode-container:alpine -f container/Containerfile.alpine container/       # Build Alpine image
+# Syntax / type check
+cargo check
+
+# Build debug binary
+./target/debug/opencode-container --help
+
+# Build release binary
+cargo build --release
+
+# Run all tests (unit + integration)
+cargo test
+
+# Run only unit tests
+cargo test --lib
+
+# Run only integration tests
+cargo test --test cli
+
+# Check formatting
+cargo fmt --check
+
+# Run linter
+cargo clippy -- -D warnings
+
+# Generate shell completions (runtime)
+./target/release/opencode-container completion --bash > /etc/bash_completion.d/opencode-container
+./target/release/opencode-container completion --zsh > "${fpath[1]}/_opencode-container"
+
+# Build container images (via docker-outside-of-docker)
+export DOCKER_HOST=unix:///var/run/docker.sock
+podman build -t localhost/opencode-container:debian -f container/Containerfile.debian container/
+podman build -t localhost/opencode-container:alpine -f container/Containerfile.alpine container/
 ```
-
-## Manual E2E testing
-
-See `tests/testdata/README.md` for ready-made feature files and a full manual
-test checklist. Run from a sibling directory (e.g. `/tmp/test-workspace`) to
-verify correct project scoping.
 
 ## Key constraints (read before changing)
 
@@ -39,14 +75,16 @@ verify correct project scoping.
 | Debian base (`node:22-slim`) | Devcontainer feature compatibility, glibc | [design.md](docs/design.md#2-debian-base-image-node22-slim) |
 | No cache volume | Prevents races between concurrent containers | [design.md](docs/design.md#7-no-persistent-cache-volume) |
 | Web mode: `-i` not `-t` | `-t` breaks `Ctrl+C` in some terminals | [design.md](docs/design.md#8-web-mode) |
+| Rust `clap` derive macros | Single source of truth for CLI + completions | Replaces hand-rolled bash parser + manual completion scripts |
+| `serde_json` native | Replaces `node-jq` dependency | JSON is typed and testable |
 
 ## Coding conventions
 
-- `#!/bin/bash` with `set -euo pipefail`
-- `local` only inside functions (top-level `local` + `set -e` = immediate exit)
-- `seq 1 N` not `{1..N}` for portability
-- Two-phase parsing: global flags first, then subcommand-specific
-- `--help` intercepted at **any position**
+- `cargo fmt` before committing
+- `cargo clippy -- -D warnings` must pass
+- Add unit tests in `#[cfg(test)] mod tests` blocks within source files
+- Add integration tests in `tests/*.rs`
+- E2E tests that spawn the binary go in `tests/e2e/*.rs`
 
 ## Interface
 
@@ -60,6 +98,7 @@ Quick summary: `[options] [--] [opencode-args...]` or `[options] <command> [comm
 ## Dependencies
 
 - **Podman** (or Docker) — required for all modes.
+- **Rust toolchain** — required to build from source.
 - **Node + npx** — required only when using `--feature-file`; auto-installs
   `@devcontainers/cli` and `node-jq` on first use.
 
@@ -67,8 +106,9 @@ Quick summary: `[options] [--] [opencode-args...]` or `[options] <command> [comm
 
 - **macOS `/var` → `/private/var`**: `resolve_path()` resolves symlinks before computing `PROJECT_ID`
 - **Empty git repos show "Create Git repository"**: `0002` patch fixes upstream, not yet applied
-- **Zsh completion**: `compadd` requires completion dispatch context — use `test-completion.sh` to verify
-- **Bash completion**: self-contained, no `bash-completion` package dependency
+- **Zsh completion**: generated by `clap_complete`, no manual maintenance needed
+- **Bash completion**: generated by `clap_complete`, no `bash-completion` package dependency
+- **docker-outside-of-docker**: set `DOCKER_HOST=unix:///var/run/docker.sock` in devcontainer
 
 ## Upstream
 

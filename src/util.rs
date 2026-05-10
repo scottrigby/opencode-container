@@ -177,3 +177,89 @@ pub fn devcontainer_cmd() -> Vec<String> {
         vec![]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_compute_project_id_roundtrip() {
+        let path = "/home/user/my-project";
+        let encoded = compute_project_id(path);
+        let decoded = decode_base64url(&encoded).unwrap();
+        assert_eq!(decoded, path);
+    }
+
+    #[test]
+    fn test_decode_base64url_with_padding() {
+        // Test that padding is correctly added for base64url decoding
+        let input = "L2hvbWUvdXNlci9teS1wcm9qZWN0";
+        let decoded = decode_base64url(input).unwrap();
+        assert_eq!(decoded, "/home/user/my-project");
+    }
+
+    #[test]
+    fn test_will_start_web_server() {
+        assert!(will_start_web_server(&["web".to_string()])); // true - no help/version args
+        assert!(!will_start_web_server(&["--help".to_string()])); // false - help arg
+        assert!(!will_start_web_server(&["-h".to_string()])); // false - short help
+        assert!(!will_start_web_server(&["--version".to_string()])); // false - version
+        assert!(!will_start_web_server(&["-v".to_string()])); // false - short version
+        assert!(!will_start_web_server(&["help".to_string()])); // false - help subcommand
+    }
+
+    #[test]
+    fn test_detect_web_mode_no_web() {
+        let args = vec!["other".to_string()];
+        let (web_mode, port, custom_host, result_args) = detect_web_mode(&args, 4096);
+        assert!(!web_mode);
+        assert_eq!(port, 4096);
+        assert!(!custom_host);
+        assert_eq!(result_args, args);
+    }
+
+    #[test]
+    fn test_detect_web_mode_with_web() {
+        let args = vec!["web".to_string()];
+        let (web_mode, port, custom_host, result_args) = detect_web_mode(&args, 4096);
+        assert!(web_mode);
+        assert_eq!(port, 4096);
+        assert!(!custom_host);
+        // Should inject --hostname 0.0.0.0 and --port 4096
+        assert!(result_args.contains(&"--hostname".to_string()));
+        assert!(result_args.contains(&"0.0.0.0".to_string()));
+        assert!(result_args.contains(&"--port".to_string()));
+    }
+
+    #[test]
+    fn test_detect_web_mode_custom_port() {
+        let args = vec!["web".to_string(), "--port".to_string(), "5000".to_string()];
+        let (web_mode, port, custom_host, _) = detect_web_mode(&args, 4096);
+        assert!(web_mode);
+        assert_eq!(port, 5000);
+        assert!(!custom_host);
+    }
+
+    #[test]
+    fn test_detect_web_mode_custom_hostname() {
+        let args = vec![
+            "web".to_string(),
+            "--hostname".to_string(),
+            "127.0.0.1".to_string(),
+        ];
+        let (web_mode, _, custom_host, result_args) = detect_web_mode(&args, 4096);
+        assert!(web_mode);
+        assert!(custom_host);
+        // Should NOT inject --hostname since user provided it
+        assert_eq!(
+            result_args.iter().filter(|a| *a == "--hostname").count(),
+            1
+        );
+    }
+
+    #[test]
+    fn test_port_is_open_localhost() {
+        // Port 1 (TCPMUX) is very unlikely to be open in a test environment
+        assert!(!port_is_open("127.0.0.1", 1));
+    }
+}
