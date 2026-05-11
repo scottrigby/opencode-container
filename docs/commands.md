@@ -10,12 +10,11 @@
 ```
 opencode-container [OPTIONS] [COMMAND]
 opencode-container [OPTIONS] run [OPENCODE_ARGS]...
-opencode-container [OPTIONS] -- [OPENCODE_ARGS]...
 ```
 
-> **Note:** The `--` delimiter is a shorthand for the default `run` subcommand.
-> It is only valid when no explicit subcommand is given. Use `run` explicitly
-> when you need both wrapper flags and opencode passthrough arguments.
+> **Note:** `run` is the default subcommand. When no explicit subcommand is
+> given, all trailing arguments are passed through to opencode (e.g.
+> `opencode-container web` is equivalent to `opencode-container run web`).
 
 ## DESCRIPTION
 
@@ -159,57 +158,17 @@ Run TUI mode in the current directory:
 
 ```bash
 opencode-container
-# or:
-opencode-container run
 ```
 
 Run web UI mode (auto-opens browser, forwards port 4096):
 
 ```bash
-opencode-container run web
+opencode-container web
 ```
 
-Using the `--` shorthand (equivalent to `run web`):
-
-```bash
-opencode-container -- web
-```
-
-Run web UI on a custom port:
-
-```bash
-opencode-container run web --port 5000
-```
-
-Run web UI with a custom hostname (skips browser auto-open):
-
-```bash
-opencode-container run web --hostname 127.0.0.1 --port 5000
-```
-
-Force a rebuild and start web UI:
-
-```bash
-opencode-container -b run web
-```
-
-Mount the current subdirectory (not the git root) and do not auto-init git:
-
-```bash
-opencode-container --no-git-root --no-git-init run web
-```
-
-Run with devcontainer features from a JSON file:
-
-```bash
-opencode-container -f ./features.json
-```
-
-Run web UI with features on a custom port:
-
-```bash
-opencode-container -f ./features.json run web --port 5000
-```
+> **Note:** `run` is the default subcommand. `opencode-container web` is equivalent
+> to `opencode-container run web`. All trailing arguments are passed through to
+> opencode. Use `opencode-container run --help` to see the full passthrough syntax.
 
 List all projects that have isolated data:
 

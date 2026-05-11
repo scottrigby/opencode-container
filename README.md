@@ -10,7 +10,7 @@ Run the opencode CLI in a Podman container with per-project isolation.
 opencode-container
 
 # Web mode
-opencode-container run web
+opencode-container web
 ```
 
 ## Installation
