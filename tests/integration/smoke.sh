@@ -38,19 +38,19 @@ echo "=== opencode-container dry-run smoke tests ==="
 echo ""
 
 # --- Help and usage ---
-run_test "--help shows usage" "NAME" "$OC" --help
-run_test "-h shows usage" "SYNOPSIS" "$OC" -h
+run_test "--help shows usage" "Commands:" "$OC" --help
+run_test "-h shows usage" "Commands:" "$OC" -h
 
 # --- Global flag validation ---
-run_test "missing --feature-file arg errors" "--feature-file requires an argument" "$OC" --feature-file
-run_test "missing --env-file arg errors" "--env-file requires an argument" "$OC" --env-file
-run_test "missing --env arg errors" "--env requires an argument" "$OC" --env
-run_test "missing --local-env arg errors" "--local-env requires an argument" "$OC" --local-env
-run_test "unknown option errors" "Unknown option" "$OC" --unknown
+run_test "missing --feature-file arg errors" "'--feature-file <PATH>' but none was supplied" "$OC" --feature-file
+run_test "missing --env-file arg errors" "'--env-file <PATH>' but none was supplied" "$OC" --env-file
+run_test "missing --env arg errors" "'--env <VAR=value>' but none was supplied" "$OC" --env
+run_test "missing --local-env arg errors" "'--local-env <VAR>' but none was supplied" "$OC" --local-env
+run_test "unknown option errors" "unexpected argument '--unknown'" "$OC" --unknown
 
-# --- Fast path (no --feature-file) reaches podman check ---
-# These fail at "podman: command not found" which confirms parsing succeeded
-run_test "default path reaches podman" "podman: command not found" "$OC"
+# --- Fast path (no --feature-file) reaches container runtime ---
+# These fail at a container/TTY error which confirms parsing succeeded
+run_test "default path reaches container runtime" "cannot attach stdin to a TTY" "$OC"
 
 # --- Feature path (reaches devcontainer check) ---
 # Create a temp feature file; the script will validate JSON, then fail at devcontainer up
@@ -70,19 +70,27 @@ run_test "bash completion file exists" "complete -F" echo "$BASH_COMP"
 run_test "zsh completion file exists" "compdef" echo "$ZSH_COMP"
 
 # --- Web mode passthrough ---
-run_test "web mode reaches podman" "podman: command not found" "$OC" -- web
-run_test "web mode with custom port reaches podman" "podman: command not found" "$OC" -- web --port 5000
-run_test "web mode with custom hostname reaches podman" "podman: command not found" "$OC" -- web --hostname 127.0.0.1
+# Web mode fails at container start (different error depending on environment)
+run_test "web mode reaches container runtime" "Container failed to start" "$OC" run web
+run_test "web mode custom port reaches runtime" "Container failed to start" "$OC" run web --port 5000
+run_test "web mode custom hostname reaches runtime" "Container failed to start" "$OC" run web --hostname 127.0.0.1
+
+# --- Legacy -- passthrough ---
+run_test "legacy -- web reaches container runtime" "Container failed to start" "$OC" -- web
+run_test "legacy -b -- web reaches container runtime" "Container failed to start" "$OC" -b -- web
 
 # --- Environment variable flags ---
-run_test "-e/--env reaches podman fast path" "podman: command not found" "$OC" -e FOO=bar
-run_test "--env reaches podman fast path" "podman: command not found" "$OC" --env FOO=bar
-run_test "--local-env reaches podman fast path" "podman: command not found" "$OC" --local-env HOME
+run_test "-e/--env reaches container runtime" "cannot attach stdin to a TTY" "$OC" -e FOO=bar
+run_test "--env reaches container runtime" "cannot attach stdin to a TTY" "$OC" --env FOO=bar
+run_test "--local-env reaches container runtime" "cannot attach stdin to a TTY" "$OC" --local-env HOME
 
-# --- Argument passthrough (-- delimiter) ---
-run_test "-- passes args to opencode" "podman: command not found" "$OC" -- --some-opencode-flag
-# --help after -- should NOT trigger wrapper help; it should pass through
-run_test "--help after -- passes through" "podman: command not found" "$OC" -- --help
+# --- Argument passthrough ---
+run_test "run passes args to opencode" "cannot attach stdin to a TTY" "$OC" run --some-opencode-flag
+# --help after -- should pass through to opencode (clap handles bare --help)
+run_test "--help after -- passes through" "cannot attach stdin to a TTY" "$OC" -- --help
+
+# --- Completion mutual exclusion ---
+run_test "completion --bash --zsh is rejected" "cannot be used with" "$OC" completion --bash --zsh
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

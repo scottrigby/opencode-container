@@ -190,11 +190,12 @@ non-git directories could be removed.
 
 ---
 
-## 12. Web mode passthrough with convenience `--web` flag
+## 12. Web mode passthrough via `run` subcommand
 
-Web mode is primarily detected when the first opencode argument is `web` (e.g.
-`opencode-container -- web --port 5000`). A convenience `-w`/`--web` flag is also
-provided for brevity (`opencode-container -w -p 5000`).
+Web mode is detected when the first opencode argument is `web` (e.g.
+`opencode-container run web --port 5000`). The `run` subcommand (which is the
+default when no subcommand is given) passes all trailing arguments through to
+opencode.
 
 ### Why passthrough as the primary mechanism?
 
@@ -204,12 +205,9 @@ provided for brevity (`opencode-container -w -p 5000`).
   flags or subcommands. Passthrough eliminates this entirely.
 - **Natural UX:** `docker run` and `podman run` use this pattern
   (`podman run image <cmd> [args...]`). The wrapper follows the same convention.
-
-### Why add `--web` as a convenience flag?
-
-While passthrough is the primary mechanism, a dedicated `--web` flag provides a
-shorter form for common usage (`-w` instead of `-- web`) and makes the intent
-explicit in shell history and scripts.
+- **Clean completions:** Separating the wrapper's global flags and subcommands
+  from opencode's arguments fixes shell completion generation (clap_complete
+  struggles with positional `allow_hyphen_values` args mixed with subcommands).
 
 ### Injected defaults
 

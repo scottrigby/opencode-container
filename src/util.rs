@@ -40,8 +40,7 @@ fn port_in_use(port: u16) -> bool {
         .output()
         .map(|o| {
             o.status.success()
-                && String::from_utf8_lossy(&o.stdout)
-                    .contains(&format!("LISTEN.*:{}", port))
+                && String::from_utf8_lossy(&o.stdout).contains(&format!("LISTEN.*:{}", port))
         })
         .unwrap_or(false)
     {
@@ -73,10 +72,7 @@ pub fn will_start_web_server(args: &[String]) -> bool {
     true
 }
 
-pub fn detect_web_mode(
-    args: &[String],
-    default_port: u16,
-) -> (bool, u16, bool, Vec<String>) {
+pub fn detect_web_mode(args: &[String], default_port: u16) -> (bool, u16, bool, Vec<String>) {
     let mut web_port = default_port;
     let mut custom_hostname = false;
     let mut custom_port = false;
@@ -174,7 +170,11 @@ pub fn devcontainer_cmd() -> Vec<String> {
         .status()
         .is_ok()
     {
-        vec!["npx".to_string(), "--yes".to_string(), "@devcontainers/cli".to_string()]
+        vec![
+            "npx".to_string(),
+            "--yes".to_string(),
+            "@devcontainers/cli".to_string(),
+        ]
     } else {
         vec![]
     }
@@ -253,10 +253,7 @@ mod tests {
         assert!(web_mode);
         assert!(custom_host);
         // Should NOT inject --hostname since user provided it
-        assert_eq!(
-            result_args.iter().filter(|a| *a == "--hostname").count(),
-            1
-        );
+        assert_eq!(result_args.iter().filter(|a| *a == "--hostname").count(), 1);
     }
 
     #[test]

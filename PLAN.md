@@ -88,9 +88,9 @@ Rationale:
 
 1. `bash -n bin/opencode-container`
 2. `podman build -t localhost/opencode-container -f container/Containerfile.debian container/`
-3. Fast path: `opencode-container tui`
-4. Feature path: `opencode-container --feature-file <(echo '{"features":{"ghcr.io/devcontainers/features/common-utils:2":{}}}') tui`
-5. Web + features: `opencode-container --feature-file ... web --port 5000`
+3. Fast path: `opencode-container run`
+4. Feature path: `opencode-container --feature-file <(echo '{"features":{"ghcr.io/devcontainers/features/common-utils:2":{}}}') run`
+5. Web + features: `opencode-container --feature-file ... run web --port 5000`
 6. Deduplication: run same project twice, verify second aborts
 7. `zsh test-completion.sh`
 

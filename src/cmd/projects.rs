@@ -4,7 +4,9 @@ use std::path::PathBuf;
 
 pub fn run() -> Result<()> {
     let data_root = dirs::data_dir()
-        .unwrap_or_else(|| PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| String::from("~"))))
+        .unwrap_or_else(|| {
+            PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| String::from("~")))
+        })
         .join("opencode")
         .join("data");
 
@@ -24,7 +26,8 @@ pub fn run() -> Result<()> {
         match decoded {
             Ok(path) => {
                 // Resolve symlinks for consistent display
-                let resolved = std::fs::canonicalize(&path).unwrap_or_else(|_| PathBuf::from(&path));
+                let resolved =
+                    std::fs::canonicalize(&path).unwrap_or_else(|_| PathBuf::from(&path));
                 println!("{}", resolved.display());
             }
             Err(_) => {

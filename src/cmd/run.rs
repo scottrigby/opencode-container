@@ -15,12 +15,13 @@ use std::time::Duration;
 const IMAGE: &str = "localhost/opencode-container";
 const LABEL_KEY: &str = "opencode.project.id";
 
-pub fn run(cli: Cli) -> Result<()> {
+pub fn run(cli: Cli, opencode_args: &[String]) -> Result<()> {
     // --- Common setup ---
     let script_dir = find_script_dir()?;
-    let container_dir = script_dir.join("container").canonicalize().unwrap_or_else(|_| {
-        script_dir.join("container")
-    });
+    let container_dir = script_dir
+        .join("container")
+        .canonicalize()
+        .unwrap_or_else(|_| script_dir.join("container"));
 
     let pwd_resolved = util::resolve_path(Path::new("."))?;
 
@@ -72,20 +73,38 @@ pub fn run(cli: Cli) -> Result<()> {
 
     // Detect web mode
     let (web_mode, web_port, custom_hostname, opencode_args) =
-        util::detect_web_mode(&cli.opencode_args, cli.port);
+        util::detect_web_mode(opencode_args, 4096);
 
     // --- Path B: Devcontainer mode ---
     if !cli.feature_file.is_empty() {
         return run_devcontainer(
-            &cli, &container_dir, &code_dir, &data_dir, &config_dir, &project_id,
-            web_mode, web_port, custom_hostname, &opencode_args, &env_files,
+            &cli,
+            &container_dir,
+            &code_dir,
+            &data_dir,
+            &config_dir,
+            &project_id,
+            web_mode,
+            web_port,
+            custom_hostname,
+            &opencode_args,
+            &env_files,
         );
     }
 
     // --- Path A: Fast path ---
     run_fast_path(
-        &cli, &container_dir, &code_dir, &data_dir, &config_dir, &project_id,
-        web_mode, web_port, custom_hostname, &opencode_args, &env_files,
+        &cli,
+        &container_dir,
+        &code_dir,
+        &data_dir,
+        &config_dir,
+        &project_id,
+        web_mode,
+        web_port,
+        custom_hostname,
+        &opencode_args,
+        &env_files,
     )
 }
 
@@ -132,6 +151,7 @@ fn detect_git_root(cwd: &Path) -> Result<PathBuf> {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_devcontainer(
     cli: &Cli,
     container_dir: &Path,
@@ -184,7 +204,11 @@ fn run_devcontainer(
     }
 
     // Build forwardPorts and runArgs for web mode
-    let forward_ports = if web_mode { json!([web_port]) } else { json!([]) };
+    let forward_ports = if web_mode {
+        json!([web_port])
+    } else {
+        json!([])
+    };
     let mut extra_run_args = vec![json!("--init")];
 
     if web_mode {
@@ -203,7 +227,10 @@ fn run_devcontainer(
 
     // Build environment map
     let mut container_env = HashMap::new();
-    container_env.insert("OPENCODE_DISABLE_DEFAULT_PLUGINS".to_string(), json!("true"));
+    container_env.insert(
+        "OPENCODE_DISABLE_DEFAULT_PLUGINS".to_string(),
+        json!("true"),
+    );
     if cli.no_git_init {
         container_env.insert("OPENCODE_NO_GIT_INIT".to_string(), json!("1"));
     }
@@ -256,9 +283,15 @@ fn run_devcontainer(
         }
     }
 
-    fs::write(&devcontainer_json_path, serde_json::to_string_pretty(&config)?)
-        .with_context(|| "Failed to write devcontainer.json")?;
-    eprintln!("Generated devcontainer config: {}", devcontainer_json_path.display());
+    fs::write(
+        &devcontainer_json_path,
+        serde_json::to_string_pretty(&config)?,
+    )
+    .with_context(|| "Failed to write devcontainer.json")?;
+    eprintln!(
+        "Generated devcontainer config: {}",
+        devcontainer_json_path.display()
+    );
 
     // Start the devcontainer
     let up_stdout = tempfile::NamedTempFile::new()?;
@@ -270,14 +303,18 @@ fn run_devcontainer(
     }
     up_cmd.args([
         "up",
-        "--docker-path", "podman",
-        "--workspace-folder", &code_dir.to_string_lossy(),
-        "--config", &devcontainer_json_path.to_string_lossy(),
+        "--docker-path",
+        "podman",
+        "--workspace-folder",
+        &code_dir.to_string_lossy(),
+        "--config",
+        &devcontainer_json_path.to_string_lossy(),
         "--remove-existing-container",
     ]);
     up_cmd.stdout(Stdio::from(up_stdout.reopen()?));
 
-    let status = up_cmd.status()
+    let status = up_cmd
+        .status()
         .with_context(|| "Failed to run devcontainer up")?;
     if !status.success() {
         anyhow::bail!("Error: devcontainer up failed");
@@ -318,7 +355,7 @@ fn run_devcontainer(
                 eprintln!("Warning: server did not respond on port {}", port);
             }
 
-            if http_ready && !cli.no_open && !custom_hostname {
+            if http_ready && !custom_hostname {
                 open_browser(&url)?;
             }
         }
@@ -331,9 +368,12 @@ fn run_devcontainer(
     }
     exec_cmd.args([
         "exec",
-        "--docker-path", "podman",
-        "--workspace-folder", &code_dir.to_string_lossy(),
-        "--config", &devcontainer_json_path.to_string_lossy(),
+        "--docker-path",
+        "podman",
+        "--workspace-folder",
+        &code_dir.to_string_lossy(),
+        "--config",
+        &devcontainer_json_path.to_string_lossy(),
         "opencode",
     ]);
     for arg in opencode_args {
@@ -349,9 +389,12 @@ fn run_devcontainer(
                 .args(&devcontainer_cmd[1..])
                 .args([
                     "stop",
-                    "--docker-path", "podman",
-                    "--workspace-folder", &code_dir.to_string_lossy(),
-                    "--config", &devcontainer_json_path.to_string_lossy(),
+                    "--docker-path",
+                    "podman",
+                    "--workspace-folder",
+                    &code_dir.to_string_lossy(),
+                    "--config",
+                    &devcontainer_json_path.to_string_lossy(),
                 ])
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
@@ -373,6 +416,7 @@ fn run_devcontainer(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_fast_path(
     cli: &Cli,
     container_dir: &Path,
@@ -401,7 +445,10 @@ fn run_fast_path(
     // Common container args
     let mut container_args = vec![
         format!("--label={}={}", LABEL_KEY, project_id),
-        format!("-v={}:/home/node/.local/share/opencode:Z", data_dir.display()),
+        format!(
+            "-v={}:/home/node/.local/share/opencode:Z",
+            data_dir.display()
+        ),
         format!("-v={}:/home/node/.config/opencode:Z", config_dir.display()),
         format!("-v={}:/code:Z", code_dir.display()),
         "-e=OPENCODE_DISABLE_DEFAULT_PLUGINS=true".to_string(),
@@ -492,7 +539,7 @@ fn run_fast_path(
 
             println!("URL: {}", url);
 
-            if http_ready && !cli.no_open && !custom_hostname {
+            if http_ready && !custom_hostname {
                 open_browser(&url)?;
             }
         }
@@ -555,8 +602,10 @@ fn find_running_container(project_id: &str) -> Result<Option<String>> {
     let output = Command::new(util::container_cmd())
         .args([
             "ps",
-            "--filter", &format!("label={}={}", LABEL_KEY, project_id),
-            "--format", "{{.Names}}",
+            "--filter",
+            &format!("label={}={}", LABEL_KEY, project_id),
+            "--format",
+            "{{.Names}}",
         ])
         .output()?;
     if !output.status.success() {
@@ -571,8 +620,10 @@ fn find_container_id(project_id: &str) -> Result<Option<String>> {
     let output = Command::new(util::container_cmd())
         .args([
             "ps",
-            "--filter", &format!("label={}={}", LABEL_KEY, project_id),
-            "--format", "{{.ID}}",
+            "--filter",
+            &format!("label={}={}", LABEL_KEY, project_id),
+            "--format",
+            "{{.ID}}",
         ])
         .output()?;
     if !output.status.success() {
@@ -584,10 +635,20 @@ fn find_container_id(project_id: &str) -> Result<Option<String>> {
 }
 
 fn open_browser(url: &str) -> Result<()> {
-    if Command::new("open").arg(url).status().map(|s| s.success()).unwrap_or(false) {
+    if Command::new("open")
+        .arg(url)
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+    {
         return Ok(());
     }
-    if Command::new("xdg-open").arg(url).status().map(|s| s.success()).unwrap_or(false) {
+    if Command::new("xdg-open")
+        .arg(url)
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+    {
         return Ok(());
     }
     eprintln!("Warning: could not auto-open browser (tried 'open' and 'xdg-open')");

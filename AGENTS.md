@@ -90,10 +90,10 @@ podman build -t localhost/opencode-container:alpine -f container/Containerfile.a
 
 Full reference: [docs/commands.md](docs/commands.md) · `opencode-container --help`
 
-Quick summary: `[options] [--] [opencode-args...]` or `[options] <command> [command-options]`
-- Options: `-b/--build`, `-f/--feature-file PATH`, `--env-file PATH`, `-e/--env VAR=value`, `--local-env VAR`, `--no-open`, `--no-git-root`, `--no-git-init`, `-h/--help`
-- Commands: `projects`, `completion`
-- Web mode: detected when first opencode arg is `web` (e.g. `-- web --port 5000`)
+Quick summary: `[options] <command> [command-options]` or `[options] run [opencode-args...]`
+- Options: `-b/--build`, `-f/--feature-file PATH`, `--env-file PATH`, `-e/--env VAR=value`, `--local-env VAR`, `--no-git-root`, `--no-git-init`, `-h/--help`
+- Commands: `run` (default, alias `tui`), `projects`, `completion`
+- Web mode: detected when first opencode arg is `web` (e.g. `run web --port 5000`)
 
 ## Dependencies
 

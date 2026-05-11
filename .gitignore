@@ -1,20 +1,5 @@
-# macOS
-.DS_Store
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
 # Build artifacts
-*.tar
-*.tar.gz
-
-# E2E test workspace (auto-initialized with git init)
-tests/testdata/test-project/.git/
-
-# Rust
 /target/
-**/*.rs.bk
+
+# Test binary copy
+/bin/

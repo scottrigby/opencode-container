@@ -8,9 +8,14 @@
 ## SYNOPSIS
 
 ```
-opencode-container [OPTIONS] [--] [OPENCODE_ARGS]...
-opencode-container <COMMAND>
+opencode-container [OPTIONS] [COMMAND]
+opencode-container [OPTIONS] run [OPENCODE_ARGS]...
+opencode-container [OPTIONS] -- [OPENCODE_ARGS]...
 ```
+
+> **Note:** The `--` delimiter is a shorthand for the default `run` subcommand.
+> It is only valid when no explicit subcommand is given. Use `run` explicitly
+> when you need both wrapper flags and opencode passthrough arguments.
 
 ## DESCRIPTION
 
@@ -62,20 +67,6 @@ devcontainer CLI resolves the value from the host at container start time.
 In fast path, passes `-e VAR` directly to Podman, which inherits the host's
 current value.
 
-`-w`, `--web`
-: Convenience flag to run in web UI mode. Equivalent to passing `web` as the
-first opencode argument. Detected automatically even without this flag when
-the first argument is `web`.
-
-`-p`, `--port` *PORT*
-: Port to listen on when in web mode. Default: `4096`. Only applies when the
-first opencode argument is `web` or `--web` was passed.
-
-`--no-open`
-: Do not automatically open the browser when running the web UI. Only
-applies in web mode and when no custom `--hostname` is set by the user.
-The URL is still printed to stdout.
-
 `--no-git-root`
 : Mount the current working directory instead of auto-detecting and
 mounting the git repository root.
@@ -87,25 +78,27 @@ opencode treats the directory as a proper project root.
 
 ## WEB UI MODE
 
-Web mode is activated when either:
-- The `-w`/`--web` flag is passed, **or**
-- The first opencode argument (after `--`) is `web`.
+Web mode is activated when the first opencode argument is `web`.
 
 When web mode is detected, the CLI:
 
 1. Injects `--hostname 0.0.0.0` if the user did not set `--hostname`
    (required for the host to reach the container).
-2. Injects `--port 4096` (or the value from `--port`) if the user did not set `--port`.
+2. Injects `--port 4096` if the user did not set `--port`.
 3. Forwards the port from the container to the host.
 4. Waits for the HTTP server to respond.
-5. Prints the URL and auto-opens the browser (unless `--no-open` was
-   passed or a custom `--hostname` was set).
+5. Prints the URL and auto-opens the browser (unless a custom `--hostname`
+   was set).
 
 If opencode web subcommands or flags that do not start a server are
 detected (e.g. `help`, `--help`, `--version`), the CLI skips the
 port wait and browser open entirely.
 
 ## COMMANDS
+
+`run` (default, alias `tui`)
+: Run opencode in a container. This is the default when no subcommand is
+  given. All trailing arguments are passed through to opencode.
 
 `projects`
 : List all project directories that have isolated session data under
@@ -114,9 +107,9 @@ port wait and browser open entirely.
 (human-readable) path of a project that has been opened at least once.
 
 `completion`
-: Generate shell completion scripts. Use `--bash`, `--zsh`, `--fish`, or
-`--powershell` to select a shell. Completions are generated dynamically
-from the CLI definition and are always in sync with the binary.
+: Generate shell completion scripts. Use `--bash` or `--zsh` to select a
+shell. Completions are generated dynamically from the CLI definition and
+are always in sync with the binary.
 
 ## ENVIRONMENT
 
@@ -166,40 +159,44 @@ Run TUI mode in the current directory:
 
 ```bash
 opencode-container
+# or:
+opencode-container run
 ```
 
 Run web UI mode (auto-opens browser, forwards port 4096):
 
 ```bash
+opencode-container run web
+```
+
+Using the `--` shorthand (equivalent to `run web`):
+
+```bash
 opencode-container -- web
-# or:
-opencode-container -w
 ```
 
 Run web UI on a custom port:
 
 ```bash
-opencode-container -- web --port 5000
-# or:
-opencode-container -w -p 5000
+opencode-container run web --port 5000
 ```
 
 Run web UI with a custom hostname (skips browser auto-open):
 
 ```bash
-opencode-container -- web --hostname 127.0.0.1 --port 5000
+opencode-container run web --hostname 127.0.0.1 --port 5000
 ```
 
 Force a rebuild and start web UI:
 
 ```bash
-opencode-container -b -- web
+opencode-container -b run web
 ```
 
 Mount the current subdirectory (not the git root) and do not auto-init git:
 
 ```bash
-opencode-container --no-git-root --no-git-init -- web
+opencode-container --no-git-root --no-git-init run web
 ```
 
 Run with devcontainer features from a JSON file:
@@ -211,7 +208,7 @@ opencode-container -f ./features.json
 Run web UI with features on a custom port:
 
 ```bash
-opencode-container -f ./features.json -- web --port 5000
+opencode-container -f ./features.json run web --port 5000
 ```
 
 List all projects that have isolated data:
