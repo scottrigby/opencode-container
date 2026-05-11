@@ -1,0 +1,128 @@
+#!/bin/bash
+# E2E test runner for opencode-container
+# Run from the project root or any directory
+
+set -euo pipefail
+
+# Resolve script directory, even if invoked via symlink or from elsewhere
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+OC="$PROJECT_ROOT/bin/opencode-container"
+DATA="$PROJECT_ROOT/tests/testdata"
+WORKSPACE="$DATA/test-project"
+
+# Ensure workspace has git init (for correct project scoping)
+if [[ ! -d "$WORKSPACE/.git" ]]; then
+  (cd "$WORKSPACE" && git init >/dev/null 2>&1)
+fi
+
+echo "=== opencode-container E2E test runner ==="
+echo "Project root: $PROJECT_ROOT"
+echo "Workspace:    $WORKSPACE"
+echo "Binary:       $OC"
+echo ""
+
+usage() {
+  cat <<'EOF'
+Usage: tests/e2e/run-test <test-number>
+
+Available tests:
+  1   Fast path — no features
+  2   Feature path — Common utils features
+  3   Feature path — Multiple features (Common utils + Go)
+  4   Feature path — Merge collision, last file wins (zsh enabled vs disabled)
+  5   Feature path — Web mode with features
+  6   Auto-detect hint — Workspace has .devcontainer/devcontainer.json
+  7   Feature path — Use workspace .devcontainer (Rust)
+  8   Rebuild — Force image rebuild
+  9   Inspect generated devcontainer.json
+
+  all   Run tests 1, 2, 6 sequentially (quick sanity check)
+
+Examples:
+  tests/e2e/run-test 1          # Fast path TUI
+  tests/e2e/run-test 4          # Test merge collision
+  tests/e2e/run-test all        # Quick sanity suite
+
+For manual verification steps (commands to run inside the container),
+see: tests/testdata/README.md
+EOF
+}
+
+if [[ $# -eq 0 ]]; then
+  usage
+  exit 0
+fi
+
+TEST="$1"
+
+cd "$WORKSPACE"
+
+case "$TEST" in
+  1)
+    echo "Test 1: Fast path — no features"
+    "$OC"
+    ;;
+  2)
+    echo "Test 2: Feature path — Common utils features"
+    "$OC" --feature-file "$DATA/features-common-utils.json"
+    ;;
+  3)
+    echo "Test 3: Feature path — Multiple features (Common utils + Go)"
+    "$OC" \
+      --feature-file "$DATA/features-common-utils.json" \
+      --feature-file "$DATA/features-go.json"
+    ;;
+  4)
+    echo "Test 4: Feature path — Merge collision (last file wins)"
+    "$OC" \
+      --feature-file "$DATA/features-common-utils.json" \
+      --feature-file "$DATA/features-common-utils-override.json"
+    ;;
+  5)
+    echo "Test 5: Feature path — Web mode with features"
+    "$OC" --feature-file "$DATA/features-common-utils.json" -w -p 5000
+    ;;
+  6)
+    echo "Test 6: Auto-detect hint (workspace has .devcontainer)"
+    "$OC"
+    ;;
+  7)
+    echo "Test 7: Feature path — Use workspace .devcontainer (Rust)"
+    "$OC" --feature-file .devcontainer/devcontainer.json
+    ;;
+  8)
+    echo "Test 8: Rebuild — Force image rebuild"
+    "$OC" --build
+    ;;
+  9)
+    echo "Test 9: Inspect generated devcontainer.json"
+    PROJECT_ID=$(echo -n "$(pwd)" | base64 | tr '+/' '-_' | tr -d '=')
+    CONFIG_PATH="$HOME/.cache/opencode/$PROJECT_ID/devcontainer.json"
+    if [[ -f "$CONFIG_PATH" ]]; then
+      echo "Generated config at: $CONFIG_PATH"
+      cat "$CONFIG_PATH" | npx --yes node-jq .
+    else
+      echo "No generated config found at $CONFIG_PATH"
+      echo "Run test 2, 3, 4, 5, or 7 first to generate one."
+      exit 1
+    fi
+    ;;
+  all)
+    echo "Quick sanity suite (tests 1, 2, 6)"
+    echo ""
+    echo "--- Test 1: Fast path ---"
+    "$OC" || true
+    echo ""
+    echo "--- Test 2: Common utils feature path ---"
+    "$OC" --feature-file "$DATA/features-common-utils.json" || true
+    echo ""
+    echo "--- Test 6: Auto-detect hint ---"
+    "$OC" || true
+    ;;
+  *)
+    echo "Unknown test: $TEST" >&2
+    usage >&2
+    exit 1
+    ;;
+esac

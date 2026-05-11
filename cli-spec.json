@@ -1,0 +1,90 @@
+{
+  "name": "opencode-container",
+  "version": "0.1.0",
+  "description": "Run opencode in a Podman container with per-project isolation",
+  "commands": [
+    {
+      "name": "projects",
+      "description": "List all projects with isolated session data",
+      "options": [],
+      "args": []
+    },
+    {
+      "name": "completion",
+      "description": "Generate shell completion scripts",
+      "options": [
+        {
+          "name": "--bash",
+          "type": "boolean",
+          "description": "Output bash completion script"
+        },
+        {
+          "name": "--zsh",
+          "type": "boolean",
+          "description": "Output zsh completion script"
+        }
+      ],
+      "args": []
+    }
+  ],
+  "main_options": [
+    {
+      "name": "--help",
+      "short": "-h",
+      "type": "boolean",
+      "description": "Print usage and exit"
+    },
+    {
+      "name": "--build",
+      "short": "-b",
+      "type": "boolean",
+      "description": "Force rebuild the container image before running"
+    },
+    {
+      "name": "--feature-file",
+      "short": "-f",
+      "type": "path",
+      "repeatable": true,
+      "description": "Merge .features from a JSON file into the generated devcontainer.json. Later files win on key collision."
+    },
+    {
+      "name": "--env-file",
+      "short": "-e",
+      "type": "path",
+      "repeatable": true,
+      "description": "Pass an environment file to the container. Auto-detects .env in project root."
+    },
+    {
+      "name": "--web",
+      "short": "-w",
+      "type": "boolean",
+      "description": "Run in web UI mode instead of TUI"
+    },
+    {
+      "name": "--port",
+      "short": "-p",
+      "type": "number",
+      "default": 4096,
+      "description": "Port to listen on (web mode only)"
+    },
+    {
+      "name": "--no-open",
+      "type": "boolean",
+      "description": "Do not auto-open the browser (web mode only)"
+    },
+    {
+      "name": "--no-git-root",
+      "type": "boolean",
+      "description": "Mount the current working directory instead of auto-detecting the git repository root"
+    },
+    {
+      "name": "--no-git-init",
+      "type": "boolean",
+      "description": "Do not auto-initialise an empty git repo in non-git directories"
+    }
+  ],
+  "main_args": {
+    "description": "Arguments passed through to opencode",
+    "optional": true
+  }
+}

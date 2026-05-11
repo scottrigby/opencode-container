@@ -1,0 +1,53 @@
+# opencode-container zsh completion
+
+autoload -Uz compinit && compinit
+
+_opencode_container() {
+  local -a opts cmds
+  opts=(
+    '-b' '--build'
+    '-f' '--feature-file'
+    '--env-file'
+    '-e' '--env'
+    '--local-env'
+    '--no-open'
+    '--no-git-root'
+    '--no-git-init'
+    '-h' '--help'
+  )
+  cmds=(
+    'completion'
+    'projects'
+  )
+
+  # Determine current context
+  local cmd=""
+  local i
+  for (( i=2; i <= CURRENT; i++ )); do
+    case "${words[i]}" in
+      --) break ;;
+      -b|--build|--no-open|--no-git-root|--no-git-init|-h|--help) continue ;;
+      -f|--feature-file|--env-file|-e|--env|--local-env) (( i++ )); continue ;;
+      --bash|--zsh) continue ;;
+      completion|projects) cmd="${words[i]}"; break ;;
+      *) break ;;
+    esac
+  done
+
+  if [[ -n "$cmd" ]]; then
+    case "$cmd" in
+      completion)
+        compadd --bash --zsh
+        ;;
+      projects)
+        ;;
+    esac
+    return
+  fi
+
+  # No command yet — offer main opts + cmds
+  compadd -a opts
+  compadd -a cmds
+}
+
+compdef _opencode_container opencode-container

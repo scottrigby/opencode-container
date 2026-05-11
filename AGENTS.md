@@ -6,7 +6,8 @@
 opencode-container/
 ├── bin/opencode-container          # Main wrapper script (bash)
 ├── container/
-│   ├── Containerfile               # Alpine + gcompat + non-root user
+│   ├── Containerfile.alpine        # Alpine + gcompat + non-root user
+│   ├── Containerfile.debian        # Debian (node:22-slim) + non-root user
 │   └── entrypoint.sh               # Auto-init git repo for non-git dirs
 ├── docs/                           # See docs/ for full reference
 ├── patches/                        # Upstream patches (see patches/readme.md)
@@ -17,17 +18,25 @@ opencode-container/
 ## Build and test
 
 ```bash
-bash -n bin/opencode-container          # Syntax check
-zsh test-completion.sh                  # Completion tests (requires bash + zsh)
-podman build -t localhost/opencode-container container/   # Build image
+bash -n bin/opencode-container                                              # Syntax check
+zsh test-completion.sh                                                      # Completion tests (requires bash + zsh)
+./tests/integration/smoke.sh                                                # Dry-run smoke tests (no Podman required)
+podman build -t localhost/opencode-container:debian -f container/Containerfile.debian container/   # Build Debian image
+podman build -t localhost/opencode-container:alpine -f container/Containerfile.alpine container/       # Build Alpine image
 ```
+
+## Manual E2E testing
+
+See `tests/testdata/README.md` for ready-made feature files and a full manual
+test checklist. Run from a sibling directory (e.g. `/tmp/test-workspace`) to
+verify correct project scoping.
 
 ## Key constraints (read before changing)
 
 | Decision | Rationale | Detail |
 |----------|-----------|--------|
 | No `--name` | Auto-generated names prevent collisions | [design.md](docs/design.md#9-label-based-deduplication) |
-| Alpine + gcompat | Close to upstream, avoids fork | [design.md](docs/design.md#2-alpine--gcompat) |
+| Debian base (`node:22-slim`) | Devcontainer feature compatibility, glibc | [design.md](docs/design.md#2-debian-base-image-node22-slim) |
 | No cache volume | Prevents races between concurrent containers | [design.md](docs/design.md#7-no-persistent-cache-volume) |
 | Web mode: `-i` not `-t` | `-t` breaks `Ctrl+C` in some terminals | [design.md](docs/design.md#8-web-mode) |
 
@@ -43,10 +52,16 @@ podman build -t localhost/opencode-container container/   # Build image
 
 Full reference: [docs/commands.md](docs/commands.md) · `opencode-container --help`
 
-Quick summary: `[global-options] [subcommand] [subcommand-options]`
-- Global: `-b/--build`, `--no-git-root`, `--no-git-init`, `-h/--help`
-- Subcommands: `tui` (default), `web`, `completion`, `projects`
-- `web`: `-p/--port PORT`, `--no-open`
+Quick summary: `[options] [--] [opencode-args...]` or `[options] <command> [command-options]`
+- Options: `-b/--build`, `-f/--feature-file PATH`, `--env-file PATH`, `-e/--env VAR=value`, `--local-env VAR`, `--no-open`, `--no-git-root`, `--no-git-init`, `-h/--help`
+- Commands: `projects`, `completion`
+- Web mode: detected when first opencode arg is `web` (e.g. `-- web --port 5000`)
+
+## Dependencies
+
+- **Podman** (or Docker) — required for all modes.
+- **Node + npx** — required only when using `--feature-file`; auto-installs
+  `@devcontainers/cli` and `node-jq` on first use.
 
 ## Gotchas
 
