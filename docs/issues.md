@@ -121,3 +121,62 @@ absolute URL, bypassing all relative-path fallbacks.
 **Note:** This only manifests when the embedded UI is served through the
 opencode backend from non-root URL paths. It does not affect the production
 app hosted at the domain root.
+
+---
+
+## `clap_complete` bash completion case-label mismatch for dashed command names
+
+**Symptom:** Bash completions for subcommands do not work. After sourcing the
+bash completion script, pressing `<TAB>` after a subcommand (e.g.
+`opencode-container completion --<TAB>`) falls through to filesystem
+completion instead of offering the subcommand's flags.
+
+**Root cause:** `clap_complete`'s Bash generator uses the same separator
+(`__subcmd__`) for both:
+1. Replacing spaces between parent and child command names in the `bin_name` path
+2. Replacing dashes in the parent command name itself
+
+For a command named `opencode-container`, the generator produces:
+
+- **For-loop label** (correct): `opencode__container,completion)`
+- **Case label** (buggy): `opencode__subcmd__container__subcmd__completion)`
+
+These never match, so the completion handler never transitions into the
+subcommand's option set.
+
+**Local workaround:** We post-process the generated bash script in
+`src/cmd/completion.rs` to replace the buggy prefix:
+
+```rust
+script = script.replace(
+    "opencode__subcmd__container__subcmd__",
+    "opencode__container__subcmd__",
+);
+```
+
+**Upstream status:** Not yet reported. A minimal reproduction is a CLI with a
+dashed `bin_name` and at least one subcommand; the generated bash script has
+mismatched `case` labels. The fix likely involves separating the space-replacement
+separator from the dash-replacement separator in `clap_complete`'s Bash generator
+(`src/aot/shells/bash.rs`).
+
+**TODO:** Open an upstream issue (and ideally a PR) against
+[`clap-rs/clap`](https://github.com/clap-rs/clap) in the `clap_complete` crate.
+
+---
+
+## `--` passthrough is only valid for the default/`run` subcommand
+
+**Symptom / question:** Should the `--` delimiter be allowed with subcommands
+other than `run` (e.g. `opencode-container completion -- --bash`)?
+
+**Answer:** No. The `--` passthrough is designed only for forwarding arguments
+to opencode. It is only valid when:
+1. No explicit subcommand is given (the default `run` path), or
+2. The `run` subcommand is explicitly used.
+
+**Implementation:** `preprocess_args()` in `src/main.rs` only inserts the implicit
+`run` subcommand before `--` when no known subcommand (`run`, `projects`,
+`completion`, `help`) appears before the delimiter. If a subcommand like
+`completion` is already present, clap handles `--` naturally (it is not a valid
+argument for `completion`, so clap rejects it).

@@ -19,17 +19,15 @@ This file tracks feature ideas and known issues for post-MVP implementation.
   ```
 - For Podman fast path, pass `--env-file` directly (supports multiple)
 
-### 2. Zsh Completion Issues
+### 2. Zsh Completion Issues ✅
 
-**Status:** Known issue. Zsh completion has several bugs:
+**Status:** Resolved by Rust rewrite.
 
-- `opencode-container completion` only completes `--zsh`, not `--bash`
-- After choosing a subcommand (e.g., `tui`), global options are not offered
-- `opencode-container web` should complete `--port` and global options
-
-**Root cause:** The `compadd` logic and context detection in the zsh completion
-function need review. The bash completion works correctly; zsh needs similar
-filtering logic.
+**Resolution:** The CLI was rewritten in Rust using [clap](https://crates.io/crates/clap)
+with [clap_complete](https://crates.io/crates/clap_complete). Shell completion
+scripts for bash, zsh, fish, and PowerShell are generated automatically from the
+single source of truth (the `Cli` struct definition). No hand-written completion
+scripts, no drift between shells.
 
 ### 3. `--env` and `--local-env` Flags ✅
 
@@ -56,41 +54,28 @@ filtering logic.
 
 **Reference:** [VS Code Remote - Environment Variables](https://code.visualstudio.com/remote/advancedcontainers/environment-variables)
 
-## CLI Spec and Completion Generation
+## CLI Framework Rewrite ✅
 
-### 5. Formal CLI Specification
+### 5. Formal CLI Specification and Completion Generation
 
-**Status:** `cli-spec.json` created as documentation. Generator not yet implemented.
+**Status:** Resolved by Rust rewrite.
 
-**Idea:** Represent the CLI structure (commands, options, types, descriptions) in a
-machine-readable format (JSON/YAML) and use it to auto-generate shell completion
-scripts, man pages, and help text.
+**What changed:**
+- The bash script with hand-rolled arg parsing and hand-maintained completion
+  scripts was replaced with a Rust CLI using `clap` derive macros.
+- The CLI spec is now the Rust source code itself (`src/cli.rs`).
+- `clap_complete` auto-generates completions for bash, zsh, fish, and PowerShell
+  from the same struct definition.
+- No more `cli-spec.json`, no more hand-written `completions/`, no more drift.
 
-**Why:** Currently the CLI structure is defined ad-hoc in `bin/opencode-container` with
-hand-written completion scripts for bash and zsh. This leads to:
-- Completions getting out of sync with the actual parser
-- Bugs in one shell's completion that don't exist in the other
-- No single source of truth for the CLI structure
+**New dependencies (build-time only for users):**
+- Rust toolchain (for building from source)
+- `cargo` / `cargo install`
 
-**Approaches evaluated:**
-
-1. **Hand-written generator script** — Parse `cli-spec.json` with `jq`, emit bash/zsh
-   completion scripts. Doable but error-prone (as demonstrated by initial attempt).
-   Would need proper testing.
-
-2. **`argbash`** — Bash script generator that takes annotated templates and produces
-   scripts with proper `getopts` parsing + completions. Would require rewriting
-   `bin/opencode-container` as an argbash template. Adds build step and dependency.
-
-3. **Switch to language with CLI framework** — Rewrite wrapper in Go (cobra), Rust
-   (clap), or Python (click) which all auto-generate completions from struct/decorator
-   definitions. Major architectural change, not justified for a thin wrapper.
-
-**Recommendation:** For now, keep hand-written completions but use `cli-spec.json` as
-the reference when adding new flags. In the future, evaluate `argbash` or a custom
-`jq`-based generator that produces both bash and zsh scripts from the spec.
-
-**Related:** See §2 (Zsh Completion Issues) for immediate bugs to fix.
+**User impact:**
+- Shell completions are always in sync with the binary.
+- Type-safe argument parsing eliminates entire classes of CLI bugs.
+- Single static binary distribution (no directory tree of scripts).
 
 ## Ctrl+C / Ctrl+D Confirmation Prompt
 
@@ -109,3 +94,34 @@ the reference when adding new flags. In the future, evaluate `argbash` or a cust
 **Upstream issue:** [anomalyco/opencode#10975](https://github.com/anomalyco/opencode/issues/10975)
 
 **Status:** Tracked upstream. Add to `docs/issues.md` when implemented.
+
+## Future Ideas
+
+### 6. Embed Containerfiles into the binary
+
+**Idea:** Use Rust's `include_str!` macro to embed `Containerfile.debian` and
+`entrypoint.sh` into the binary at compile time. The binary could then
+self-extract these files to a cache directory at runtime, making it a fully
+self-contained single-file distribution.
+
+**Benefit:** No need to ship the `container/` directory alongside the binary.
+
+### 7. Cross-platform binary releases
+
+**Idea:** Use GitHub Actions to build release binaries for:
+- Linux (x86_64, aarch64)
+- macOS (x86_64, Apple Silicon)
+- Windows (x86_64)
+
+**Benefit:** Users don't need a Rust toolchain.
+
+### 8. Config file support
+
+**Idea:** Support a `.opencode-container.toml` or `.opencode-container.json` config
+file in the project root for per-project defaults (e.g., default port, feature
+files, env files).
+
+### 9. Plugin system for container runtimes
+
+**Idea:** Abstract the container runtime so that Podman, Docker, and potentially
+other runtimes (nerdctl, containerd) can be used interchangeably.

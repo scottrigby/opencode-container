@@ -87,7 +87,7 @@ reuse this user instead of creating a separate `opencode` user because:
 
 ## 5. No shadowing of the `opencode` binary
 
-The script is named `opencode-container` so it never shadows a native macOS
+The binary is named `opencode-container` so it never shadows a native macOS
 install. Users can alias it locally (e.g. `alias oc=opencode-container`) but the
 binary name itself is explicit.
 
@@ -96,12 +96,18 @@ binary name itself is explicit.
 ## 6. Per-project data/config isolation (not shared)
 
 Each project directory gets its own `opencode.db`, `auth.json`, `node_modules`,
-etc. under base64-encoded paths:
+etc. under base64-encoded paths. Data, config, and cache are always stored in
+separate subdirectories (`data/`, `config/`, `cache/`), even on platforms where
+the base `dirs::data_dir()` and `dirs::config_dir()` return the same path
+(e.g., macOS `~/Library/Application Support/`). This ensures the Linux container
+receives distinct mount points for data and config, matching its XDG
+expectations:
 
-```
-~/.local/share/opencode/<encoding>/
-~/.config/opencode/<encoding>/
-```
+| Platform | Data directory | Config directory | Cache directory |
+|----------|---------------|------------------|-----------------|
+| Linux | `~/.local/share/opencode/data/<encoding>/` | `~/.config/opencode/config/<encoding>/` | `~/.cache/opencode/cache/<encoding>/` |
+| macOS | `~/Library/Application Support/opencode/data/<encoding>/` | `~/Library/Application Support/opencode/config/<encoding>/` | `~/Library/Caches/opencode/cache/<encoding>/` |
+| Windows | `%APPDATA%/opencode/data/<encoding>/` | `%APPDATA%/opencode/config/<encoding>/` | `%LOCALAPPDATA%/opencode/cache/<encoding>/` |
 
 This is **intentionally not shared** across projects to prevent:
 - SQLite database lock conflicts when multiple containers run simultaneously.
@@ -184,13 +190,14 @@ non-git directories could be removed.
 
 ---
 
-## 12. Web mode passthrough (no wrapper `--web` flag)
+## 12. Web mode passthrough via `run` subcommand
 
-The wrapper does not define its own `--web` or `--port` flags. Instead, it
-detects web mode when the first opencode argument is `web` (e.g.
-`opencode-container -- web --port 5000`).
+Web mode is detected when the first opencode argument is `web` (e.g.
+`opencode-container run web --port 5000`). The `run` subcommand (which is the
+default when no subcommand is given) passes all trailing arguments through to
+opencode.
 
-### Why passthrough?
+### Why passthrough as the primary mechanism?
 
 - **Thinner wrapper:** No re-implementation of opencode's CLI surface. Users use
   opencode's native flags (`--port`, `--hostname`, `--pure`, etc.) directly.
@@ -198,16 +205,28 @@ detects web mode when the first opencode argument is `web` (e.g.
   flags or subcommands. Passthrough eliminates this entirely.
 - **Natural UX:** `docker run` and `podman run` use this pattern
   (`podman run image <cmd> [args...]`). The wrapper follows the same convention.
+- **Clean completions:** Separating the wrapper's global flags and subcommands
+  from opencode's arguments fixes shell completion generation (clap_complete
+  struggles with positional `allow_hyphen_values` args mixed with subcommands).
 
 ### Injected defaults
 
-The wrapper inspects opencode's `web` args and injects two defaults if missing:
+The CLI inspects opencode's `web` args and injects two defaults if missing:
 
 - **`--hostname 0.0.0.0`**: Required for the host browser to reach the container.
   If the user sets a custom `--hostname`, the wrapper skips browser auto-open
   (the host likely cannot reach a non-default hostname).
 - **`--port 4096`**: Provides a predictable default for port forwarding and URL
   generation. If the user sets `--port`, that value is used instead.
+
+### Skipping web-mode infrastructure for non-server commands
+
+If the opencode args include `--help`, `-h`, `--version`, `-v`, or `help`,
+opencode will not start a web server. In this case the wrapper skips port
+binding, health-check polling, and browser auto-open entirely. The container
+starts normally and the command runs as a one-off (e.g. showing help text
+and exiting). This avoids confusing port-scan messages and unnecessary
+infrastructure when the user just wants to read help or check the version.
 
 ### Port auto-discovery
 
@@ -217,23 +236,25 @@ prevents "address already in use" crashes when multiple web containers run.
 
 ---
 
-## 13. `Ctrl+C` and `podman stop`
+## 13. `Ctrl+C` and graceful shutdown
 
-The web mode wrapper runs the container in the background (`&`) and installs a
-`trap cleanup EXIT INT TERM` in the **host shell**. On `Ctrl+C`:
-1. Host shell trap fires.
-2. `podman stop -t 5 <container>` is called.
-3. Container receives `SIGTERM`, shuts down gracefully.
-4. `wait` returns, shell exits.
+In web mode, the container runs as a background child process. The Rust binary
+uses the `ctrlc` crate to install a `SIGINT` handler. On `Ctrl+C`:
+1. The signal handler fires in the Rust process.
+2. A cleanup flag is set atomically.
+3. The main thread detects the flag and calls `podman stop -t 5 <container>`.
+4. Container receives `SIGTERM`, shuts down gracefully.
+5. The process exits cleanly.
 
-This is more reliable than relying on `podman run -it` catching signals
-inside the container.
+For devcontainer mode, cleanup also calls `devcontainer stop` and `podman rm -f`
+to ensure no orphaned containers remain. The `ctrlc` crate is cross-platform
+(Linux, macOS, Windows), unlike shell traps which are POSIX-specific.
 
 ---
 
 ## 14. Devcontainer mode (`--feature-file`)
 
-When `--feature-file` is passed, the wrapper switches from a direct `podman run`
+When `--feature-file` is passed, the CLI switches from a direct `podman run`
 to the **devcontainer CLI**, which layers community devcontainer features onto
 the base image at container startup.
 
@@ -242,8 +263,8 @@ the base image at container startup.
 - **Fast path** (no `--feature-file`): direct `podman run` is instant and has no
   dependencies beyond Podman.
 - **Feature path**: the devcontainer CLI is the standard mechanism for installing
-  and caching devcontainer features. Re-implementing feature installation in bash
-  would be complex, fragile, and incompatible with the ecosystem.
+  and caching devcontainer features. Re-implementing feature installation in the
+  CLI would be complex, fragile, and incompatible with the ecosystem.
 
 ### `--build` flag behavior
 
@@ -256,7 +277,7 @@ when debugging layer issues), remove the image first:
 
 ```bash
 podman rmi localhost/opencode-container
-opencode-container --build tui
+opencode-container -b
 ```
 
 This deletes all layers and rebuilds from scratch.
@@ -267,21 +288,28 @@ This deletes all layers and rebuilds from scratch.
 automatically when stdin is a terminal. Key handling (arrow keys, Ctrl+C,
 etc.) works correctly through the inherited terminal.
 
-### Why `npx` for devcontainer CLI and jq
+### Why `npx` for devcontainer CLI
 
-Both the devcontainer CLI (`@devcontainers/cli`) and `jq` (`node-jq`) are
-invoked via `npx --yes`, which downloads them on first use and caches them for
-subsequent runs. This has two major advantages:
+The devcontainer CLI (`@devcontainers/cli`) is invoked via `npx --yes`, which
+downloads it on first use and caches it for subsequent runs. If the devcontainer
+CLI is already installed globally, the binary uses the global version and skips
+the npx fallback.
 
-1. **Minimal hard dependencies:** The only required system tools are Podman (or
-   Docker) and Node.js (for `npx`). Everything else is managed by npm/npx.
-2. **Deterministic behavior:** `node-jq` bundles a specific `jq` binary, so
-   feature file parsing and JSON merging behave identically across platforms
-   regardless of what system `jq` version (if any) the user has installed.
+### Why `serde_json` replaces `jq`
 
-If the devcontainer CLI is already installed globally, the wrapper uses the
-global version and skips the npx fallback. `jq` is always invoked via
-`npx node-jq` for consistency.
+The bash implementation used `node-jq` (via `npx`) to merge `.features` objects
+from multiple `--feature-file` arguments and generate `devcontainer.json`. The
+Rust rewrite uses `serde_json` natively:
+
+- **No Node.js dependency** for core functionality — only needed if using
+  `--feature-file` with the devcontainer CLI.
+- **Type-safe JSON manipulation** — the compiler guarantees valid JSON structure.
+- **Testable** — JSON generation logic is unit-tested in `cargo test`.
+- **Faster** — no process spawn overhead for `jq` invocations.
+
+Feature files are read into `serde_json::Value`, the `.features` objects are
+merged in memory, and the final `devcontainer.json` is written atomically to
+the cache directory.
 
 ### Why `containerEnv` values must be strings
 
@@ -291,12 +319,12 @@ a `TypeError: [X].replace is not a function` during feature processing.
 This is a known upstream issue
 ([microsoft/vscode-remote-release#10691](https://github.com/microsoft/vscode-remote-release/issues/10691)).
 
-The wrapper always generates string values (`"true"`, `"1"`) to avoid this.
+The CLI always generates string values (`"true"`, `"1"`) to avoid this.
 
 ### Why empty `features: {}` is omitted
 
 Some devcontainer CLI versions fail when processing an empty features object
-during dependency resolution. The wrapper omits the `features` key entirely
+during dependency resolution. The CLI omits the `features` key entirely
 when no `--feature-file` arguments are provided, generating it only when
 features are actually present.
 
@@ -312,7 +340,7 @@ switches to plain line-by-line output, matching
 
 Feature installation (e.g., `common-utils:2`) can take a long time. Silently
 capturing all output leaves the user staring at a blank screen with no
-feedback. The wrapper captures stdout silently (for potential JSON parsing)
+feedback. The CLI captures stdout silently (for potential JSON parsing)
 while streaming stderr live to the terminal, so the user sees build progress
 in real time.
 
@@ -327,14 +355,14 @@ slim Debian base. This causes the feature build to fail with:
 node: error while loading shared libraries: libatomic.so.1: cannot open shared object file
 ```
 
-The wrapper does not block this feature (the user controls `--feature-file`),
+The CLI does not block this feature (the user controls `--feature-file`),
 but test fixtures and documentation avoid it. This incompatibility is not
 documented in the upstream feature README.
 
 ### Why Podman template uses `{{.ID}}` (uppercase)
 
 Podman's Go template system uses `{{.ID}}` (uppercase), while Docker uses
-`{{.Id}}` (mixed case). The wrapper uses uppercase to match Podman's API.
+`{{.Id}}` (mixed case). The CLI uses uppercase to match Podman's API.
 This was discovered when `podman ps --format '{{.Id}}'` failed with:
 
 ```
@@ -344,7 +372,7 @@ Error: template: ps:1:13: executing "ps" at <.Id>: can't evaluate field Id in ty
 ### Why `devcontainer.json` is generated per-run
 
 The JSON is assembled by merging `.features` objects from all `--feature-file`
-arguments using `jq`, then layering opencode-specific mounts, labels, and
+arguments using `serde_json`, then layering opencode-specific mounts, labels, and
 environment variables on top. Because the set of features may change between
 runs, the JSON is regenerated each time into:
 
@@ -363,7 +391,7 @@ and would be invalid if the image changes. Persistent caches add complexity
 without meaningful speedup in this mode.
 
 **Future TODO:** If `--feature-file` JSONs could define `cacheEnv` entries (as
-claudeman profiles do), the wrapper could generate `mounts` + `remoteEnv` entries
+claudeman profiles do), the CLI could generate `mounts` + `remoteEnv` entries
 to persist caches per-project under `XDG_CACHE_HOME/opencode/<PROJECT_ID>/cache/`.
 This would speed up subsequent rebuilds without cross-project races.
 
@@ -376,7 +404,7 @@ invalidation.
 
 ### Why `.env` auto-detection
 
-The wrapper auto-detects `.env` in the project root (git repository root or
+The CLI auto-detects `.env` in the project root (git repository root or
 current directory) and passes it to the container via `--env-file`. This follows
 the principle of least surprise — if a project has environment configuration, it
 should be available in the container without explicit flags.
@@ -388,13 +416,56 @@ directly to `podman run`.
 
 ---
 
+## 15. Cross-compilation and release architecture
+
+The Rust binary is compiled for the host architecture by default. This means:
+- Building inside a Linux container produces a Linux binary.
+- Building on macOS produces a Darwin binary.
+- The two are not interchangeable.
+
+### Release strategy
+
+GitHub Actions builds release binaries for multiple targets:
+
+| Target | Architecture | Notes |
+|--------|-------------|-------|
+| `x86_64-unknown-linux-gnu` | Linux AMD64 | Standard Linux servers |
+| `aarch64-unknown-linux-gnu` | Linux ARM64 | Raspberry Pi, ARM servers, Apple Silicon VMs |
+| `x86_64-apple-darwin` | macOS Intel | Older Macs |
+| `aarch64-apple-darwin` | macOS Apple Silicon | M1/M2/M3 Macs |
+| `x86_64-pc-windows-msvc` | Windows AMD64 | Windows 10/11 |
+
+Users download the appropriate binary from GitHub Releases. No Rust toolchain
+is required for end users.
+
+### Development workflow
+
+When working across architectures (e.g., developing in a Linux devcontainer on
+an Apple Silicon Mac), the developer compiles for their host architecture
+outside the container:
+
+```bash
+# On macOS host
+cargo build --release
+# Produces target/release/opencode-container for Darwin
+```
+
+Inside the Linux devcontainer, `cargo build --release` produces a Linux binary
+(useful for testing the Linux path, but not for macOS distribution).
+
+Cross-compilation from Linux to macOS requires the macOS SDK and is not
+trivially available in a standard Linux container. GitHub Actions (macOS runners)
+handle this natively.
+
+---
+
 ## Open questions / future work
 
 - **Build from source:** Once upstream adopts the non-git worktree fix, the
   `entrypoint.sh` `git init` workaround can be removed.
-- **Cross-platform `lsof`/`ss`:** Windows/WSL support would need a different port
-  scan mechanism.
-- **`--env` / `--local-env` support:** No mechanism exists for passing individual
-  environment variables or host environment references into the container.
+- **Cross-platform port scanning:** Windows/WSL support would need a different port
+  scan mechanism (the current `lsof`/`ss` approach is POSIX-specific).
 - **Custom mounts:** No mechanism exists for additional bind mounts (e.g.
   `~/.aws`, `~/.kube/config`).
+- **Embed Containerfiles:** Use `include_str!` to embed `Containerfile.debian`
+  and `entrypoint.sh` into the binary, making it fully self-contained.
