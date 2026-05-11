@@ -15,39 +15,8 @@ opencode-container run web
 
 ## Installation
 
-### From GitHub Releases (recommended)
-
-Download the latest release for your platform from the [releases page](https://github.com/scottrigby/opencode-container/releases), then place the binary on your `PATH`:
-
-```bash
-# macOS / Linux
-chmod +x opencode-container-*/opencode-container
-mv opencode-container-*/opencode-container ~/.local/bin/
-```
-
-### From source (requires Rust)
-
-```bash
-cargo install --git https://github.com/scottrigby/opencode-container
-```
-
-### Tab completion
-
-```bash
-# Bash
-opencode-container completion --bash > ~/.local/share/bash-completion/completions/opencode-container
-
-# Zsh
-opencode-container completion --zsh > "${fpath[1]}/_opencode-container"
-
-# Fish
-opencode-container completion --fish > ~/.config/fish/completions/opencode-container.fish
-
-# PowerShell
-opencode-container completion --powershell > _opencode-container.ps1
-```
-
-See [`docs/install.md`](docs/install.md) for full installation details.
+See [`docs/install.md`](docs/install.md) for requirements, install options (GitHub
+Releases, Cargo, or build from source), shell completion setup, and data layout.
 
 ## Docs
 
