@@ -219,6 +219,15 @@ The CLI inspects opencode's `web` args and injects two defaults if missing:
 - **`--port 4096`**: Provides a predictable default for port forwarding and URL
   generation. If the user sets `--port`, that value is used instead.
 
+### Skipping web-mode infrastructure for non-server commands
+
+If the opencode args include `--help`, `-h`, `--version`, `-v`, or `help`,
+opencode will not start a web server. In this case the wrapper skips port
+binding, health-check polling, and browser auto-open entirely. The container
+starts normally and the command runs as a one-off (e.g. showing help text
+and exiting). This avoids confusing port-scan messages and unnecessary
+infrastructure when the user just wants to read help or check the version.
+
 ### Port auto-discovery
 
 Web mode scans from `4096` upward using `lsof` (macOS) or `ss` (Linux) to find

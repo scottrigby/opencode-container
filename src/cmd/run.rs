@@ -72,8 +72,14 @@ pub fn run(cli: Cli, opencode_args: &[String]) -> Result<()> {
     }
 
     // Detect web mode
-    let (web_mode, web_port, custom_hostname, opencode_args) =
+    let (mut web_mode, web_port, custom_hostname, opencode_args) =
         util::detect_web_mode(opencode_args, 4096);
+
+    // If opencode won't actually start a server (--help, --version, help subcommand),
+    // skip port binding, health check, and browser open.
+    if web_mode && !util::will_start_web_server(&opencode_args) {
+        web_mode = false;
+    }
 
     // --- Path B: Devcontainer mode ---
     if !cli.feature_file.is_empty() {
