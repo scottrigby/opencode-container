@@ -203,6 +203,17 @@ fn run_devcontainer(
         }
     }
 
+    // Resolve host port for web mode once (reused for config + health check)
+    let host_port = if web_mode {
+        let port = util::find_free_port(web_port);
+        if port != web_port {
+            eprintln!("Port {} in use, using port {} instead", web_port, port);
+        }
+        Some(port)
+    } else {
+        None
+    };
+
     // Build forwardPorts and runArgs for web mode
     let forward_ports = if web_mode {
         json!([web_port])
@@ -211,12 +222,8 @@ fn run_devcontainer(
     };
     let mut extra_run_args = vec![json!("--init")];
 
-    if web_mode {
-        let port = util::find_free_port(web_port);
-        if port != web_port {
-            eprintln!("Port {} in use, using port {} instead", web_port, port);
-        }
-        extra_run_args.push(json!(format!("-p={}:{}", port, port)));
+    if let Some(port) = host_port {
+        extra_run_args.push(json!(format!("-p={}:{}", port, web_port)));
     }
 
     // Build env-file args
@@ -332,8 +339,7 @@ fn run_devcontainer(
     })?;
 
     // Web mode handling
-    if web_mode {
-        let port = util::find_free_port(web_port);
+    if let Some(port) = host_port {
         let code_b64 = util::compute_project_id("/code");
         let url = format!("http://localhost:{}/{}", port, code_b64);
 
@@ -491,7 +497,7 @@ fn run_fast_path(
         for arg in &container_args {
             run_cmd.arg(arg);
         }
-        run_cmd.arg(format!("-p={}:{}", port, port));
+        run_cmd.arg(format!("-p={}:{}", port, web_port));
         run_cmd.arg(IMAGE);
         for arg in opencode_args {
             run_cmd.arg(arg);
