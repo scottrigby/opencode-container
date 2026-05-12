@@ -267,6 +267,7 @@ fn run_devcontainer(
     let mut run_args = vec![
         json!(format!("--label={}={}", LABEL_KEY, project_id)),
         json!("--init"),
+        json!("--stop-timeout=1"),
     ];
     run_args.extend(env_args);
     run_args.extend(extra_run_args);
