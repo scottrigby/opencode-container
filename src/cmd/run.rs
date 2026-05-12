@@ -274,6 +274,7 @@ fn run_devcontainer(
     let mut config = json!({
         "name": "opencode-container",
         "image": IMAGE,
+        "workspaceFolder": "/code",
         "build": {
             "options": ["--progress=plain"]
         },
