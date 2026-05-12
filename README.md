@@ -47,4 +47,12 @@ cargo build --release
 cargo test
 ```
 
-See [`AGENTS.md`](AGENTS.md) for the full developer workflow.
+For a full development environment with Rust toolchain, docker-outside-of-docker,
+and common utilities, use the provided devcontainer feature file:
+
+```bash
+opencode-container --feature-file dev/rust-devcontainer.json
+```
+
+See [`AGENTS.md`](AGENTS.md) for the full developer workflow and [`dev/`](dev/)
+for additional feature file examples.
