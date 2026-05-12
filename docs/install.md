@@ -31,6 +31,15 @@ cargo install --git https://github.com/scottrigby/opencode-container
 
 This compiles from source and installs the binary to `~/.cargo/bin/`.
 
+**Update an existing cargo install:**
+
+```bash
+cargo install --git https://github.com/scottrigby/opencode-container --force
+```
+
+The `--force` flag is required because cargo will not overwrite an already-installed
+binary by default.
+
 ### Option 3: Build locally from source
 
 ```bash
@@ -78,13 +87,32 @@ opencode-container completion --powershell > _opencode-container.ps1
 . ./_opencode-container.ps1
 ```
 
+## Updating
+
+### Cargo install
+
+```bash
+# Update to the latest version from the default branch
+cargo install --git https://github.com/scottrigby/opencode-container --force
+
+# Or install a specific release tag (e.g., v0.1.2)
+cargo install --git https://github.com/scottrigby/opencode-container --tag v0.1.2 --force
+```
+
+### GitHub Releases
+
+Download the new release archive, extract, and replace the binary on your `PATH`.
+
+---
+
 ## Data and config layout
 
 Each project is fully isolated. Data, config, and cache are always stored in
-separate subdirectories, even on platforms where `dirs::data_dir()` and
-`dirs::config_dir()` return the same base path (e.g., macOS):
+separate subdirectories. On all platforms, `opencode-container` follows the
+[XDG Base Directory Specification](https://specifications.freedesktop.org/basedir/latest/)
+(respecting `XDG_DATA_HOME`, `XDG_CONFIG_HOME`, and `XDG_CACHE_HOME` when set):
 
-### Linux
+### Linux / macOS / WSL
 
 ```
 ~/.local/share/opencode/data/
@@ -98,25 +126,6 @@ separate subdirectories, even on platforms where `dirs::data_dir()` and
 └── ...
 
 ~/.cache/opencode/cache/
-├── <encoding-a>/          # generated devcontainer.json, etc.
-├── <encoding-b>/
-└── ...
-```
-
-### macOS
-
-```
-~/Library/Application Support/opencode/data/
-├── <encoding-a>/          # project A session data
-├── <encoding-b>/          # project B session data
-└── ...
-
-~/Library/Application Support/opencode/config/
-├── <encoding-a>/          # project A config
-├── <encoding-b>/          # project B config
-└── ...
-
-~/Library/Caches/opencode/cache/
 ├── <encoding-a>/          # generated devcontainer.json, etc.
 ├── <encoding-b>/
 └── ...
@@ -148,10 +157,6 @@ You will need to authenticate (add providers) once per project.
 To share auth between projects, copy `auth.json` manually:
 
 ```bash
-# Linux
+# Linux / macOS / WSL
 cp ~/.config/opencode/config/<encoding-a>/auth.json ~/.config/opencode/config/<encoding-b>/
-
-# macOS
-cp ~/Library/Application\ Support/opencode/config/<encoding-a>/auth.json \
-   ~/Library/Application\ Support/opencode/config/<encoding-b>/
 ```
