@@ -459,13 +459,47 @@ handle this natively.
 
 ---
 
-## Open questions / future work
+## 16. Out of scope
 
-- **Build from source:** Once upstream adopts the non-git worktree fix, the
-  `entrypoint.sh` `git init` workaround can be removed.
-- **Cross-platform port scanning:** Windows/WSL support would need a different port
-  scan mechanism (the current `lsof`/`ss` approach is POSIX-specific).
-- **Custom mounts:** No mechanism exists for additional bind mounts (e.g.
-  `~/.aws`, `~/.kube/config`).
-- **Embed Containerfiles:** Use `include_str!` to embed `Containerfile.debian`
-  and `entrypoint.sh` into the binary, making it fully self-contained.
+These features have been investigated and explicitly deferred. They are not
+planned for implementation.
+
+### Ctrl+C / Ctrl+D confirmation prompt
+
+**Problem:** Accidental keypresses terminate opencode sessions unexpectedly.
+This is a well-known upstream annoyance
+([anomalyco/opencode#10975](https://github.com/anomalyco/opencode/issues/10975)).
+
+**Why deferred:** Implementing this in `opencode-container` would require
+breaking the direct terminal attachment between the host and the container
+process. The wrapper would need to proxy stdin/stdout and intercept signals
+before forwarding them, which:
+
+- Breaks TUI rendering (no `ioctl` terminal sizing, arrow keys may fail)
+- Adds significant complexity for marginal UX improvement
+- Is better solved upstream where the TUI itself can handle the prompt
+
+**Status:** Tracked upstream. Will be inherited automatically if/when opencode
+implements it.
+
+### Plugin system for container runtimes
+
+**Problem:** Users have requested support for alternative container runtimes
+(nerdctl, containerd, etc.).
+
+**Why deferred:** The devcontainer ecosystem (which powers `--feature-file`)
+only supports Docker-compatible APIs. The `@devcontainers/cli` tool and the
+VS Code Dev Containers extension both invoke `docker` or `podman` directly.
+While the devcontainer *specification* is runtime-agnostic in theory, the
+reference implementation and feature installation machinery assume a Docker
+daemon API surface that other runtimes do not fully implement.
+
+Supporting multiple runtimes would require either:
+- Re-implementing the entire devcontainer feature installation stack
+- Maintaining a compatibility shim for each runtime
+
+Both options add more complexity than value for a wrapper whose primary goal
+is simplicity.
+
+**Current support:** Podman (preferred) and Docker (via `docker` symlink or
+`DOCKER_HOST`). Both implement the required API surface.

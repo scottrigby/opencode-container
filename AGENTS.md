@@ -78,6 +78,18 @@ podman build -t localhost/opencode-container:alpine -f container/Containerfile.a
 | Rust `clap` derive macros | Single source of truth for CLI + completions | Replaces hand-rolled bash parser + manual completion scripts |
 | `serde_json` native | Replaces `node-jq` dependency | JSON is typed and testable |
 
+## Documentation conventions
+
+- **README.md** should be minimal — quick start, installation pointer, and link to
+  docs. Do not duplicate detailed reference material.
+- **All detailed documentation** lives in `docs/` with clear organization:
+  - `commands.md` — CLI reference (flags, subcommands, examples)
+  - `design.md` — architecture rationale, decisions, and out-of-scope items
+  - `issues.md` — known upstream issues and local workarounds
+  - `install.md` — requirements, install methods, data layout
+- **ROADMAP.md** tracks only *future* ideas. Completed items are removed once they
+  are fully documented in `docs/design.md`.
+
 ## Coding conventions
 
 - `cargo fmt` before committing
