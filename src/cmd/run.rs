@@ -42,13 +42,11 @@ pub fn run(cli: Cli, opencode_args: &[String]) -> Result<()> {
         (pwd_resolved.clone(), id)
     };
 
-    let data_dir = dirs::data_dir()
-        .unwrap_or_else(|| PathBuf::from(env::var("HOME").unwrap_or_else(|_| String::from("~"))))
+    let data_dir = util::xdg_data_home()?
         .join("opencode")
         .join("data")
         .join(&project_id);
-    let config_dir = dirs::config_dir()
-        .unwrap_or_else(|| PathBuf::from(env::var("HOME").unwrap_or_else(|_| String::from("~"))))
+    let config_dir = util::xdg_config_home()?
         .join("opencode")
         .join("config")
         .join(&project_id);
@@ -256,8 +254,7 @@ fn run_devcontainer(
         container_env.insert(entry.clone(), json!(format!("${{localEnv:{}}}", entry)));
     }
 
-    let cache_dir = dirs::cache_dir()
-        .unwrap_or_else(|| PathBuf::from(env::var("HOME").unwrap_or_else(|_| String::from("~"))))
+    let cache_dir = util::xdg_cache_home()?
         .join("opencode")
         .join("cache")
         .join(project_id);

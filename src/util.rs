@@ -1,5 +1,6 @@
 use anyhow::Result;
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+use etcetera::base_strategy::BaseStrategy;
 use std::fs;
 use std::net::{TcpStream, ToSocketAddrs};
 use std::path::{Path, PathBuf};
@@ -144,6 +145,43 @@ pub fn decode_base64url(input: &str) -> Result<String> {
 
 pub fn compute_project_id(path: &str) -> String {
     URL_SAFE_NO_PAD.encode(path.as_bytes())
+}
+
+/// Return the XDG data home directory.
+///
+/// Uses `etcetera` to follow XDG Base Directory Specification on all platforms:
+/// - Respects `$XDG_DATA_HOME` on all platforms
+/// - Falls back to `~/.local/share` (including macOS)
+///
+/// This follows modern CLI conventions (e.g., `gh`, `nvim`, `starship`) rather
+/// than platform-native directories.
+pub fn xdg_data_home() -> Result<PathBuf> {
+    let base = etcetera::base_strategy::choose_base_strategy()?;
+    Ok(base.data_dir())
+}
+
+/// Return the XDG config home directory.
+///
+/// Uses `etcetera` to follow XDG Base Directory Specification on all platforms:
+/// - Respects `$XDG_CONFIG_HOME` on all platforms
+/// - Falls back to `~/.config` (including macOS)
+///
+/// This follows modern CLI conventions rather than platform-native directories.
+pub fn xdg_config_home() -> Result<PathBuf> {
+    let base = etcetera::base_strategy::choose_base_strategy()?;
+    Ok(base.config_dir())
+}
+
+/// Return the XDG cache home directory.
+///
+/// Uses `etcetera` to follow XDG Base Directory Specification on all platforms:
+/// - Respects `$XDG_CACHE_HOME` on all platforms
+/// - Falls back to `~/.cache` (including macOS)
+///
+/// This follows modern CLI conventions rather than platform-native directories.
+pub fn xdg_cache_home() -> Result<PathBuf> {
+    let base = etcetera::base_strategy::choose_base_strategy()?;
+    Ok(base.cache_dir())
 }
 
 pub fn container_cmd() -> &'static str {

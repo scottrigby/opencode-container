@@ -3,3 +3,6 @@
 
 # Test binary copy
 /bin/
+
+# Local devcontainer configuration (personal development environment)
+/devcontainer.json

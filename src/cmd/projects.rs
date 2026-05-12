@@ -3,10 +3,7 @@ use std::fs;
 use std::path::PathBuf;
 
 pub fn run() -> Result<()> {
-    let data_root = dirs::data_dir()
-        .unwrap_or_else(|| {
-            PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| String::from("~")))
-        })
+    let data_root = crate::util::xdg_data_home()?
         .join("opencode")
         .join("data");
 

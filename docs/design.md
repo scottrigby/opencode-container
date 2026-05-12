@@ -106,8 +106,15 @@ expectations:
 | Platform | Data directory | Config directory | Cache directory |
 |----------|---------------|------------------|-----------------|
 | Linux | `~/.local/share/opencode/data/<encoding>/` | `~/.config/opencode/config/<encoding>/` | `~/.cache/opencode/cache/<encoding>/` |
-| macOS | `~/Library/Application Support/opencode/data/<encoding>/` | `~/Library/Application Support/opencode/config/<encoding>/` | `~/Library/Caches/opencode/cache/<encoding>/` |
+| macOS | `~/.local/share/opencode/data/<encoding>/`¹ | `~/.config/opencode/config/<encoding>/`¹ | `~/.cache/opencode/cache/<encoding>/`¹ |
 | Windows | `%APPDATA%/opencode/data/<encoding>/` | `%APPDATA%/opencode/config/<encoding>/` | `%LOCALAPPDATA%/opencode/cache/<encoding>/` |
+
+¹ **macOS uses XDG paths, not `~/Library/Application Support/`**. This follows
+modern CLI conventions (e.g., `gh`, `nvim`, `starship`) where pure CLI tools use
+`~/.config/` and `~/.local/share/` on macOS for consistency with Linux. The
+[`etcetera`](https://crates.io/crates/etcetera) crate provides XDG Base
+Directory Specification support on all platforms, respecting `XDG_DATA_HOME`,
+`XDG_CONFIG_HOME`, and `XDG_CACHE_HOME` environment variables when set.
 
 This is **intentionally not shared** across projects to prevent:
 - SQLite database lock conflicts when multiple containers run simultaneously.
